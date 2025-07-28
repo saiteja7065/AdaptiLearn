@@ -156,6 +156,121 @@ const MockTest = () => {
     return selectedQuestions.slice(0, testConfig.questionCount);
   };
 
+  // Define calculateResults with useCallback to prevent dependency issues
+  const calculateResults = useCallback(() => {
+    let correct = 0;
+    let subjectScores = {};
+    let difficultyScores = { Easy: { correct: 0, total: 0 }, Medium: { correct: 0, total: 0 }, Hard: { correct: 0, total: 0 } };
+    
+    questions.forEach(question => {
+      const userAnswer = answers[question.id];
+      const isCorrect = userAnswer === question.correctAnswer;
+      
+      if (isCorrect) correct++;
+      
+      // Subject-wise scoring
+      if (!subjectScores[question.subject]) {
+        subjectScores[question.subject] = { correct: 0, total: 0 };
+      }
+      subjectScores[question.subject].total++;
+      if (isCorrect) subjectScores[question.subject].correct++;
+
+      // Difficulty-wise scoring
+      difficultyScores[question.difficulty].total++;
+      if (isCorrect) difficultyScores[question.difficulty].correct++;
+    });
+
+    // Convert to percentages
+    Object.keys(subjectScores).forEach(subject => {
+      const score = subjectScores[subject];
+      subjectScores[subject] = Math.round((score.correct / score.total) * 100);
+    });
+
+    Object.keys(difficultyScores).forEach(difficulty => {
+      const score = difficultyScores[difficulty];
+      if (score.total > 0) {
+        difficultyScores[difficulty].percentage = Math.round((score.correct / score.total) * 100);
+      }
+    });
+
+    const overallScore = Math.round((correct / questions.length) * 100);
+    
+    return {
+      overallScore,
+      correctAnswers: correct,
+      totalQuestions: questions.length,
+      subjectScores,
+      difficultyScores,
+      timeSpent: (testConfig.duration * 60) - timeLeft,
+      completedAt: new Date().toISOString(),
+      adaptiveInsights: generateAdaptiveInsights(subjectScores, difficultyScores)
+    };
+  }, [questions, answers, testConfig.duration, timeLeft, generateAdaptiveInsights]);
+
+  const generateAdaptiveInsights = useCallback((subjectScores, difficultyScores) => {
+    const insights = [];
+    
+    // Subject insights
+    Object.entries(subjectScores).forEach(([subject, score]) => {
+      if (score < 60) {
+        insights.push({
+          type: 'weakness',
+          message: `${subject}: Needs significant improvement (${score}%)`,
+          recommendation: `Focus on fundamental concepts in ${subject}`
+        });
+      } else if (score >= 80) {
+        insights.push({
+          type: 'strength',
+          message: `${subject}: Strong performance (${score}%)`,
+          recommendation: `Consider advanced topics in ${subject}`
+        });
+      }
+    });
+
+    // Difficulty insights
+    if (difficultyScores.Easy.percentage < 80) {
+      insights.push({
+        type: 'concern',
+        message: 'Struggling with basic concepts',
+        recommendation: 'Review fundamental topics before attempting advanced questions'
+      });
+    }
+
+    if (difficultyScores.Hard.percentage > 70) {
+      insights.push({
+        type: 'achievement',
+        message: 'Excellent performance on challenging questions',
+        recommendation: 'Ready for advanced practice and competitive exams'
+      });
+    }
+
+    return insights;
+  }, []);
+
+  // Define handleSubmitTest before it's used in useEffect
+  const handleSubmitTest = useCallback(async () => {
+    const testResults = calculateResults();
+    setResults(testResults);
+    setIsCompleted(true);
+    setShowResults(true);
+    
+    // Save results
+    await saveMockTestResult({
+      type: 'adaptive_mock_test',
+      config: testConfig,
+      ...testResults,
+      questions: questions.map(q => ({
+        id: q.id,
+        subject: q.subject,
+        difficulty: q.difficulty,
+        userAnswer: answers[q.id],
+        correctAnswer: q.correctAnswer,
+        isCorrect: answers[q.id] === q.correctAnswer,
+        adaptiveReason: q.adaptiveReason
+      }))
+    });
+  }, [calculateResults, saveMockTestResult, testConfig, questions, answers]);
+
   useEffect(() => {
     if (!user || !userProfile?.setupCompleted) {
       navigate('/dashboard');
@@ -226,119 +341,6 @@ const MockTest = () => {
       setCurrentQuestion(prev => prev - 1);
     }
   };
-
-  const calculateResults = () => {
-    let correct = 0;
-    let subjectScores = {};
-    let difficultyScores = { Easy: { correct: 0, total: 0 }, Medium: { correct: 0, total: 0 }, Hard: { correct: 0, total: 0 } };
-    
-    questions.forEach(question => {
-      const userAnswer = answers[question.id];
-      const isCorrect = userAnswer === question.correctAnswer;
-      
-      if (isCorrect) correct++;
-      
-      // Subject-wise scoring
-      if (!subjectScores[question.subject]) {
-        subjectScores[question.subject] = { correct: 0, total: 0 };
-      }
-      subjectScores[question.subject].total++;
-      if (isCorrect) subjectScores[question.subject].correct++;
-
-      // Difficulty-wise scoring
-      difficultyScores[question.difficulty].total++;
-      if (isCorrect) difficultyScores[question.difficulty].correct++;
-    });
-
-    // Convert to percentages
-    Object.keys(subjectScores).forEach(subject => {
-      const score = subjectScores[subject];
-      subjectScores[subject] = Math.round((score.correct / score.total) * 100);
-    });
-
-    Object.keys(difficultyScores).forEach(difficulty => {
-      const score = difficultyScores[difficulty];
-      if (score.total > 0) {
-        difficultyScores[difficulty].percentage = Math.round((score.correct / score.total) * 100);
-      }
-    });
-
-    const overallScore = Math.round((correct / questions.length) * 100);
-    
-    return {
-      overallScore,
-      correctAnswers: correct,
-      totalQuestions: questions.length,
-      subjectScores,
-      difficultyScores,
-      timeSpent: (testConfig.duration * 60) - timeLeft,
-      completedAt: new Date().toISOString(),
-      adaptiveInsights: generateAdaptiveInsights(subjectScores, difficultyScores)
-    };
-  };
-
-  const generateAdaptiveInsights = (subjectScores, difficultyScores) => {
-    const insights = [];
-    
-    // Subject insights
-    Object.entries(subjectScores).forEach(([subject, score]) => {
-      if (score < 60) {
-        insights.push({
-          type: 'weakness',
-          message: `${subject}: Needs significant improvement (${score}%)`,
-          recommendation: `Focus on fundamental concepts in ${subject}`
-        });
-      } else if (score >= 80) {
-        insights.push({
-          type: 'strength',
-          message: `${subject}: Strong performance (${score}%)`,
-          recommendation: `Consider advanced topics in ${subject}`
-        });
-      }
-    });
-
-    // Difficulty insights
-    if (difficultyScores.Easy.percentage < 80) {
-      insights.push({
-        type: 'concern',
-        message: 'Struggling with basic concepts',
-        recommendation: 'Review fundamental topics before attempting advanced questions'
-      });
-    }
-
-    if (difficultyScores.Hard.percentage > 70) {
-      insights.push({
-        type: 'achievement',
-        message: 'Excellent performance on challenging questions',
-        recommendation: 'Ready for advanced practice and competitive exams'
-      });
-    }
-
-    return insights;
-  };
-
-  const handleSubmitTest = useCallback(async () => {
-    const testResults = calculateResults();
-    setResults(testResults);
-    setIsCompleted(true);
-    setShowResults(true);
-    
-    // Save results
-    await saveMockTestResult({
-      type: 'adaptive_mock_test',
-      config: testConfig,
-      ...testResults,
-      questions: questions.map(q => ({
-        id: q.id,
-        subject: q.subject,
-        difficulty: q.difficulty,
-        userAnswer: answers[q.id],
-        correctAnswer: q.correctAnswer,
-        isCorrect: answers[q.id] === q.correctAnswer,
-        adaptiveReason: q.adaptiveReason
-      }))
-    });
-  }, [calculateResults, saveMockTestResult, testConfig, questions, answers]);
 
   if (!user || !userProfile) {
     return null;
