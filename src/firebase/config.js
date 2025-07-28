@@ -112,8 +112,33 @@ export const getUserProfile = async (userId) => {
   return null;
 };
 
-// Assessment functions
-export const saveAssessmentResult = async (userId, assessmentData) => {
+// Updated functions for UserContext integration
+export const getUserDocument = async (userId) => {
+  const userDocRef = doc(db, 'users', userId);
+  try {
+    const userSnapshot = await getDoc(userDocRef);
+    if (userSnapshot.exists()) {
+      return userSnapshot.data();
+    }
+    return null;
+  } catch (error) {
+    console.log('Error getting user document:', error.message);
+    return null;
+  }
+};
+
+export const updateUserDocument = async (userId, userData) => {
+  const userDocRef = doc(db, 'users', userId);
+  try {
+    await setDoc(userDocRef, userData, { merge: true });
+    return true;
+  } catch (error) {
+    console.log('Error updating user document:', error.message);
+    return false;
+  }
+};
+
+export const saveUserAssessment = async (userId, assessmentData) => {
   try {
     const assessmentRef = collection(db, 'users', userId, 'assessments');
     const docRef = await addDoc(assessmentRef, {
@@ -128,17 +153,65 @@ export const saveAssessmentResult = async (userId, assessmentData) => {
   }
 };
 
-export const getUserAssessments = (userId, callback) => {
-  const assessmentsRef = collection(db, 'users', userId, 'assessments');
-  const q = query(assessmentsRef, orderBy('timestamp', 'desc'));
-  
-  return onSnapshot(q, (snapshot) => {
-    const assessments = snapshot.docs.map(doc => ({
+export const getUserAssessments = async (userId) => {
+  try {
+    const assessmentsRef = collection(db, 'users', userId, 'assessments');
+    const q = query(assessmentsRef, orderBy('timestamp', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
-    callback(assessments);
-  });
+  } catch (error) {
+    console.log('Error getting user assessments:', error.message);
+    return [];
+  }
+};
+
+export const saveMockTestResult = async (userId, mockTestData) => {
+  try {
+    const mockTestRef = collection(db, 'users', userId, 'mockTests');
+    const docRef = await addDoc(mockTestRef, {
+      ...mockTestData,
+      timestamp: serverTimestamp(),
+      createdAt: new Date()
+    });
+    return docRef.id;
+  } catch (error) {
+    console.log('Error saving mock test:', error.message);
+    return null;
+  }
+};
+
+export const getUserMockTests = async (userId) => {
+  try {
+    const mockTestsRef = collection(db, 'users', userId, 'mockTests');
+    const q = query(mockTestsRef, orderBy('timestamp', 'desc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.log('Error getting user mock tests:', error.message);
+    return [];
+  }
+};
+
+// Assessment functions
+export const saveAssessmentResult = async (userId, assessmentData) => {
+  try {
+    const assessmentRef = collection(db, 'users', userId, 'assessments');
+    const docRef = await addDoc(assessmentRef, {
+      ...assessmentData,
+      timestamp: serverTimestamp(),
+      createdAt: new Date()
+    });
+    return docRef.id;
+  } catch (error) {
+    console.log('Error saving assessment:', error.message);
+    return null;
+  }
 };
 
 // Question bank functions

@@ -15,6 +15,7 @@ import Assessment from './components/Assessment';
 import MockTest from './components/MockTest';
 import Analytics from './components/Analytics';
 import Feedback from './components/Feedback';
+import FirebaseTest from './components/FirebaseTest';
 
 // Context
 import { AuthProvider } from './contexts/AuthContext';
@@ -183,6 +184,7 @@ function App() {
                 <Route path="/mock-test" element={<MockTest />} />
                 <Route path="/analytics" element={<Analytics />} />
                 <Route path="/feedback" element={<Feedback />} />
+                <Route path="/firebase-test" element={<FirebaseTest />} />
               </Routes>
             </div>
           </Router>

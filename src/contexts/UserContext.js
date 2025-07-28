@@ -1,5 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
+import { 
+  createUserDocumentFromAuth, 
+  getUserDocument, 
+  updateUserDocument,
+  saveUserAssessment,
+  getUserAssessments,
+  saveMockTestResult as firebaseSaveMockTest,
+  getUserMockTests
+} from '../firebase/config';
 
 const UserContext = createContext();
 
@@ -76,18 +85,21 @@ export const UserProvider = ({ children }) => {
     try {
       setLoading(true);
       
+      if (!user?.uid) {
+        throw new Error('User not authenticated');
+      }
+
       const profile = {
         ...profileData,
-        userId: user?.uid,
+        userId: user.uid,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Save to Firebase
+      await createUserDocumentFromAuth(user, profile);
       
       setUserProfile(profile);
-      localStorage.setItem('userProfile', JSON.stringify(profile));
       
       return { success: true, profile };
     } catch (error) {
@@ -102,17 +114,20 @@ export const UserProvider = ({ children }) => {
     try {
       setLoading(true);
       
+      if (!user?.uid) {
+        throw new Error('User not authenticated');
+      }
+      
       const updatedProfile = {
         ...userProfile,
         ...updates,
         updatedAt: new Date().toISOString()
       };
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Update in Firebase
+      await updateUserDocument(user.uid, updatedProfile);
       
       setUserProfile(updatedProfile);
-      localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
       
       return { success: true, profile: updatedProfile };
     } catch (error) {
@@ -126,16 +141,22 @@ export const UserProvider = ({ children }) => {
   // Assessment functions
   const saveAssessmentResult = async (result) => {
     try {
+      if (!user?.uid) {
+        throw new Error('User not authenticated');
+      }
+
       const assessmentResult = {
         id: Date.now().toString(),
-        userId: user?.uid,
+        userId: user.uid,
         ...result,
         timestamp: new Date().toISOString()
       };
       
+      // Save to Firebase
+      await saveUserAssessment(user.uid, assessmentResult);
+      
       const updatedResults = [...assessmentResults, assessmentResult];
       setAssessmentResults(updatedResults);
-      localStorage.setItem('assessmentResults', JSON.stringify(updatedResults));
       
       return { success: true, result: assessmentResult };
     } catch (error) {
@@ -146,16 +167,22 @@ export const UserProvider = ({ children }) => {
 
   const saveMockTestResult = async (result) => {
     try {
+      if (!user?.uid) {
+        throw new Error('User not authenticated');
+      }
+
       const mockTestResult = {
         id: Date.now().toString(),
-        userId: user?.uid,
+        userId: user.uid,
         ...result,
         timestamp: new Date().toISOString()
       };
       
+      // Save to Firebase
+      await firebaseSaveMockTest(user.uid, mockTestResult);
+      
       const updatedResults = [...mockTestResults, mockTestResult];
       setMockTestResults(updatedResults);
-      localStorage.setItem('mockTestResults', JSON.stringify(updatedResults));
       
       return { success: true, result: mockTestResult };
     } catch (error) {
@@ -219,42 +246,48 @@ export const UserProvider = ({ children }) => {
 
   // Load user data on authentication change
   useEffect(() => {
-    if (isAuthenticated && user) {
-      // Load saved profile
-      const savedProfile = localStorage.getItem('userProfile');
-      if (savedProfile) {
+    const loadUserData = async () => {
+      if (isAuthenticated && user?.uid) {
         try {
-          setUserProfile(JSON.parse(savedProfile));
-        } catch (error) {
-          console.error('Error loading profile:', error);
-        }
-      }
+          setLoading(true);
+          
+          // Load user profile from Firebase
+          const profileData = await getUserDocument(user.uid);
+          if (profileData) {
+            setUserProfile(profileData);
+          }
 
-      // Load assessment results
-      const savedAssessments = localStorage.getItem('assessmentResults');
-      if (savedAssessments) {
-        try {
-          setAssessmentResults(JSON.parse(savedAssessments));
-        } catch (error) {
-          console.error('Error loading assessments:', error);
-        }
-      }
+          // Load assessment results from Firebase
+          const assessments = await getUserAssessments(user.uid);
+          setAssessmentResults(assessments || []);
 
-      // Load mock test results
-      const savedMockTests = localStorage.getItem('mockTestResults');
-      if (savedMockTests) {
-        try {
-          setMockTestResults(JSON.parse(savedMockTests));
+          // Load mock test results from Firebase
+          const mockTests = await getUserMockTests(user.uid);
+          setMockTestResults(mockTests || []);
+          
         } catch (error) {
-          console.error('Error loading mock tests:', error);
+          console.error('Error loading user data:', error);
+          // Fallback to localStorage if Firebase fails
+          const savedProfile = localStorage.getItem('userProfile');
+          if (savedProfile) {
+            try {
+              setUserProfile(JSON.parse(savedProfile));
+            } catch (parseError) {
+              console.error('Error parsing saved profile:', parseError);
+            }
+          }
+        } finally {
+          setLoading(false);
         }
+      } else {
+        // Clear data when not authenticated
+        setUserProfile(null);
+        setAssessmentResults([]);
+        setMockTestResults([]);
       }
-    } else {
-      // Clear data when not authenticated
-      setUserProfile(null);
-      setAssessmentResults([]);
-      setMockTestResults([]);
-    }
+    };
+
+    loadUserData();
   }, [isAuthenticated, user]);
 
   const value = {
