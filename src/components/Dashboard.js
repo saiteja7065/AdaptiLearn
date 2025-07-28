@@ -34,13 +34,13 @@ import {
   Notifications
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement } from 'chart.js';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler } from 'chart.js';
 import { Doughnut, Bar, Line } from 'react-chartjs-2';
 import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
 
 // Register Chart.js components
-ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement);
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler);
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -215,6 +215,13 @@ const Dashboard = () => {
       icon: <Quiz className="text-2xl" />,
       color: 'gradient-secondary',
       action: () => navigate('/mock-test')
+    },
+    {
+      title: 'Syllabus Management',
+      description: 'Upload and manage syllabi',
+      icon: <School className="text-2xl" />,
+      color: 'bg-gradient-to-r from-green-400 to-blue-400',
+      action: () => navigate('/syllabus')
     },
     {
       title: 'View Analytics',

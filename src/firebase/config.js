@@ -23,11 +23,21 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// Disable offline persistence for development to prevent mutations errors
+// Enhanced Firestore connection management for development
 if (process.env.NODE_ENV === 'development') {
   try {
-    // This helps prevent the mutations error
+    // Configure Firestore settings to prevent connection issues
     console.log('🔧 Configuring Firestore for development...');
+    
+    // Handle Firestore connection state changes
+    const handleConnectionStateChange = () => {
+      console.log('📱 Firestore connection state changed');
+    };
+    
+    // Add connection monitoring (if needed)
+    window.addEventListener('online', handleConnectionStateChange);
+    window.addEventListener('offline', handleConnectionStateChange);
+    
   } catch (error) {
     console.log('Firestore configuration note:', error);
   }

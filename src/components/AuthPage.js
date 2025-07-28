@@ -120,7 +120,7 @@ const AuthPage = () => {
         });
         
         setTimeout(() => {
-          navigate('/profile-setup');
+          navigate('/dashboard');
         }, 1500);
       } else {
         setAlert({
@@ -150,7 +150,7 @@ const AuthPage = () => {
         });
         
         setTimeout(() => {
-          navigate('/profile-setup');
+          navigate('/dashboard');
         }, 1500);
       } else {
         setAlert({

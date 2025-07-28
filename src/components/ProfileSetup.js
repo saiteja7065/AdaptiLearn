@@ -35,7 +35,7 @@ import { useUser } from '../contexts/UserContext';
 const ProfileSetup = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { branches, subjectsByBranch, semesters, createProfile, loading } = useUser();
+  const { branches, subjectsByBranch, semesters, createProfile, loading, userProfile } = useUser();
   
   const [activeStep, setActiveStep] = useState(0);
   const [profileData, setProfileData] = useState({
@@ -67,8 +67,15 @@ const ProfileSetup = () => {
   useEffect(() => {
     if (!user) {
       navigate('/auth');
+      return;
     }
-  }, [user, navigate]);
+    
+    // If user already has a profile set up, redirect to dashboard
+    if (userProfile?.setupCompleted) {
+      navigate('/dashboard');
+      return;
+    }
+  }, [user, userProfile, navigate]);
 
   const handleBranchChange = (event) => {
     const selectedBranch = event.target.value;
