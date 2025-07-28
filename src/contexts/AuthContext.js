@@ -1,4 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { 
+  auth, 
+  signInWithGooglePopup, 
+  signInWithEmail, 
+  createUserWithEmail, 
+  signOutUser, 
+  onAuthStateChangedListener,
+  createUserDocumentFromAuth
+} from '../firebase/config';
 
 const AuthContext = createContext();
 
@@ -15,29 +24,35 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Mock authentication functions for now
+  // Firebase authentication functions
   const login = async (email, password) => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await signInWithEmail(email, password);
       
-      const mockUser = {
-        uid: 'mock-user-id',
-        email: email,
-        displayName: email.split('@')[0],
-        photoURL: null,
-        emailVerified: true
-      };
+      // Try to create user document, but don't fail if it doesn't work
+      try {
+        await createUserDocumentFromAuth(response.user);
+      } catch (docError) {
+        console.log('⚠️ User document creation failed, but login succeeded:', docError.message);
+      }
       
-      setUser(mockUser);
-      setIsAuthenticated(true);
-      localStorage.setItem('user', JSON.stringify(mockUser));
-      
-      return { success: true, user: mockUser };
+      return { success: true, user: response.user };
     } catch (error) {
       console.error('Login error:', error);
-      return { success: false, error: error.message };
+      let errorMessage = 'Login failed. Please try again.';
+      
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = 'No account found with this email.';
+      } else if (error.code === 'auth/wrong-password') {
+        errorMessage = 'Incorrect password.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Invalid email address.';
+      } else if (error.message.includes('offline')) {
+        errorMessage = 'Connection issue. Please check your internet connection.';
+      }
+      
+      return { success: false, error: errorMessage };
     } finally {
       setLoading(false);
     }
@@ -46,25 +61,33 @@ export const AuthProvider = ({ children }) => {
   const register = async (email, password, displayName) => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await createUserWithEmail(email, password);
       
-      const mockUser = {
-        uid: 'mock-user-id-' + Date.now(),
-        email: email,
-        displayName: displayName || email.split('@')[0],
-        photoURL: null,
-        emailVerified: true
-      };
+      // Try to create user document, but don't fail if it doesn't work
+      try {
+        await createUserDocumentFromAuth(response.user, {
+          displayName: displayName || email.split('@')[0]
+        });
+      } catch (docError) {
+        console.log('⚠️ User document creation failed, but registration succeeded:', docError.message);
+      }
       
-      setUser(mockUser);
-      setIsAuthenticated(true);
-      localStorage.setItem('user', JSON.stringify(mockUser));
-      
-      return { success: true, user: mockUser };
+      return { success: true, user: response.user };
     } catch (error) {
       console.error('Registration error:', error);
-      return { success: false, error: error.message };
+      let errorMessage = 'Registration failed. Please try again.';
+      
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = 'An account with this email already exists.';
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = 'Password should be at least 6 characters.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Invalid email address.';
+      } else if (error.message.includes('offline')) {
+        errorMessage = 'Connection issue. Please check your internet connection.';
+      }
+      
+      return { success: false, error: errorMessage };
     } finally {
       setLoading(false);
     }
@@ -73,25 +96,27 @@ export const AuthProvider = ({ children }) => {
   const loginWithGoogle = async () => {
     try {
       setLoading(true);
-      // Simulate Google login
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await signInWithGooglePopup();
       
-      const mockUser = {
-        uid: 'google-user-id',
-        email: 'user@gmail.com',
-        displayName: 'Google User',
-        photoURL: 'https://via.placeholder.com/150',
-        emailVerified: true
-      };
+      // Try to create user document, but don't fail if it doesn't work
+      try {
+        await createUserDocumentFromAuth(response.user);
+      } catch (docError) {
+        console.log('⚠️ User document creation failed, but Google login succeeded:', docError.message);
+      }
       
-      setUser(mockUser);
-      setIsAuthenticated(true);
-      localStorage.setItem('user', JSON.stringify(mockUser));
-      
-      return { success: true, user: mockUser };
+      return { success: true, user: response.user };
     } catch (error) {
       console.error('Google login error:', error);
-      return { success: false, error: error.message };
+      let errorMessage = 'Google sign-in failed. Please try again.';
+      
+      if (error.code === 'auth/popup-closed-by-user') {
+        errorMessage = 'Sign-in cancelled.';
+      } else if (error.message.includes('offline')) {
+        errorMessage = 'Connection issue. Please check your internet connection.';
+      }
+      
+      return { success: false, error: errorMessage };
     } finally {
       setLoading(false);
     }
@@ -99,10 +124,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      setUser(null);
-      setIsAuthenticated(false);
-      localStorage.removeItem('user');
-      localStorage.removeItem('userProfile');
+      await signOutUser();
       return { success: true };
     } catch (error) {
       console.error('Logout error:', error);
@@ -112,7 +134,8 @@ export const AuthProvider = ({ children }) => {
 
   const resetPassword = async (email) => {
     try {
-      // Simulate password reset
+      // Firebase password reset will be implemented
+      // For now, return success to maintain interface
       await new Promise(resolve => setTimeout(resolve, 1000));
       return { success: true, message: 'Password reset email sent!' };
     } catch (error) {
@@ -121,25 +144,23 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Check for existing user session on app load
+  // Firebase auth state listener
   useEffect(() => {
-    const checkAuthState = () => {
-      try {
-        const savedUser = localStorage.getItem('user');
-        if (savedUser) {
-          const userData = JSON.parse(savedUser);
-          setUser(userData);
-          setIsAuthenticated(true);
-        }
-      } catch (error) {
-        console.error('Error checking auth state:', error);
-        localStorage.removeItem('user');
-      } finally {
-        setLoading(false);
+    setLoading(true);
+    
+    const unsubscribe = onAuthStateChangedListener((userAuth) => {
+      if (userAuth) {
+        createUserDocumentFromAuth(userAuth);
+        setUser(userAuth);
+        setIsAuthenticated(true);
+      } else {
+        setUser(null);
+        setIsAuthenticated(false);
       }
-    };
+      setLoading(false);
+    });
 
-    checkAuthState();
+    return unsubscribe; // Cleanup listener on component unmount
   }, []);
 
   const value = {

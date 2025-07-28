@@ -3,6 +3,9 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
+// Firebase connection test
+import './firebaseTest';
+
 // Components
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
