@@ -17,6 +17,7 @@ import Analytics from './components/Analytics';
 import Feedback from './components/Feedback';
 import FirebaseTest from './components/FirebaseTest';
 import SyllabusUpload from './components/SyllabusUpload';
+import FirestoreErrorBoundary from './components/FirestoreErrorBoundary';
 
 // Context
 import { AuthProvider } from './contexts/AuthContext';
@@ -172,26 +173,28 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AuthProvider>
-        <UserProvider>
-          <Router>
-            <div className="App min-h-screen">
-              <Routes>
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/auth" element={<AuthPage />} />
-                <Route path="/profile-setup" element={<ProfileSetup />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/assessment" element={<Assessment />} />
-                <Route path="/mock-test" element={<MockTest />} />
-                <Route path="/analytics" element={<Analytics />} />
-                <Route path="/feedback" element={<Feedback />} />
-                <Route path="/firebase-test" element={<FirebaseTest />} />
-                <Route path="/syllabus" element={<SyllabusUpload />} />
-              </Routes>
-            </div>
-          </Router>
-        </UserProvider>
-      </AuthProvider>
+      <FirestoreErrorBoundary>
+        <AuthProvider>
+          <UserProvider>
+            <Router>
+              <div className="App min-h-screen">
+                <Routes>
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/auth" element={<AuthPage />} />
+                  <Route path="/profile-setup" element={<ProfileSetup />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/assessment" element={<Assessment />} />
+                  <Route path="/mock-test" element={<MockTest />} />
+                  <Route path="/analytics" element={<Analytics />} />
+                  <Route path="/feedback" element={<Feedback />} />
+                  <Route path="/firebase-test" element={<FirebaseTest />} />
+                  <Route path="/syllabus" element={<SyllabusUpload />} />
+                </Routes>
+              </div>
+            </Router>
+          </UserProvider>
+        </AuthProvider>
+      </FirestoreErrorBoundary>
     </ThemeProvider>
   );
 }

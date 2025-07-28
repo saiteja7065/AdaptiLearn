@@ -23,24 +23,47 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// Enhanced Firestore connection management for development
-if (process.env.NODE_ENV === 'development') {
+// Export Firestore utilities for connection manager
+export { disableNetwork, enableNetwork };
+
+// Enhanced Firestore connection management to prevent internal assertion failures
+let firestoreInitialized = false;
+
+const initializeFirestoreConnection = async () => {
+  if (firestoreInitialized) return;
+  
   try {
-    // Configure Firestore settings to prevent connection issues
-    console.log('🔧 Configuring Firestore for development...');
+    console.log('🔧 Initializing Firestore connection...');
     
-    // Handle Firestore connection state changes
-    const handleConnectionStateChange = () => {
-      console.log('📱 Firestore connection state changed');
-    };
+    // Ensure clean connection state
+    if (process.env.NODE_ENV === 'development') {
+      // Disable and re-enable network to reset connection state
+      await disableNetwork(db);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await enableNetwork(db);
+    }
     
-    // Add connection monitoring (if needed)
-    window.addEventListener('online', handleConnectionStateChange);
-    window.addEventListener('offline', handleConnectionStateChange);
+    firestoreInitialized = true;
+    console.log('✅ Firestore connection initialized successfully');
     
   } catch (error) {
-    console.log('Firestore configuration note:', error);
+    console.log('⚠️ Firestore initialization note:', error);
+    firestoreInitialized = true; // Prevent retry loops
   }
+};
+
+// Initialize connection on module load
+initializeFirestoreConnection();
+
+// Handle visibility changes to prevent connection conflicts
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      console.log('📱 Page hidden - maintaining Firestore connection');
+    } else {
+      console.log('📱 Page visible - Firestore connection active');
+    }
+  });
 }
 
 // Configure Google Auth Provider

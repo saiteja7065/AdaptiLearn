@@ -144,23 +144,43 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Firebase auth state listener
+  // Firebase auth state listener with enhanced error handling
   useEffect(() => {
     setLoading(true);
     
     const unsubscribe = onAuthStateChangedListener((userAuth) => {
-      if (userAuth) {
-        createUserDocumentFromAuth(userAuth);
-        setUser(userAuth);
-        setIsAuthenticated(true);
-      } else {
+      try {
+        if (userAuth) {
+          // Handle user document creation with error boundaries
+          createUserDocumentFromAuth(userAuth).catch(error => {
+            console.log('⚠️ User document sync failed (non-critical):', error.message);
+            // Continue with authentication even if document creation fails
+          });
+          
+          setUser(userAuth);
+          setIsAuthenticated(true);
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        console.error('Auth state change error:', error);
+        // Reset to safe state on error
         setUser(null);
         setIsAuthenticated(false);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return unsubscribe; // Cleanup listener on component unmount
+    // Cleanup function
+    return () => {
+      try {
+        unsubscribe();
+      } catch (error) {
+        console.log('Auth listener cleanup error:', error);
+      }
+    };
   }, []);
 
   const value = {
