@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Box,
   Card,
@@ -106,7 +106,7 @@ const SyllabusUpload = () => {
     }
   };
 
-  const loadSyllabi = async () => {
+  const loadSyllabi = useCallback(async () => {
     if (!selectedBranch) return;
     
     setLoadingSyllabi(true);
@@ -118,7 +118,7 @@ const SyllabusUpload = () => {
     } finally {
       setLoadingSyllabi(false);
     }
-  };
+  }, [selectedBranch]);
 
   const handleGenerateQuestions = async (syllabusId) => {
     setGeneratingQuestions(true);
@@ -180,7 +180,7 @@ const SyllabusUpload = () => {
     if (selectedBranch) {
       loadSyllabi();
     }
-  }, [selectedBranch]);
+  }, [selectedBranch, loadSyllabi]);
 
   return (
     <Box sx={{ p: 3 }}>

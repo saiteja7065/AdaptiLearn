@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -176,7 +176,7 @@ const MockTest = () => {
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [isStarted, isCompleted, timeLeft]);
+  }, [isStarted, isCompleted, timeLeft, handleSubmitTest]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -317,7 +317,7 @@ const MockTest = () => {
     return insights;
   };
 
-  const handleSubmitTest = async () => {
+  const handleSubmitTest = useCallback(async () => {
     const testResults = calculateResults();
     setResults(testResults);
     setIsCompleted(true);
@@ -338,7 +338,7 @@ const MockTest = () => {
         adaptiveReason: q.adaptiveReason
       }))
     });
-  };
+  }, [calculateResults, saveMockTestResult, testConfig, questions, answers]);
 
   if (!user || !userProfile) {
     return null;

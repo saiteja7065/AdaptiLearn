@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -146,7 +146,7 @@ const Assessment = () => {
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [isStarted, isCompleted, timeLeft]);
+  }, [isStarted, isCompleted, timeLeft, handleSubmitAssessment]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -228,7 +228,7 @@ const Assessment = () => {
     };
   };
 
-  const handleSubmitAssessment = async () => {
+  const handleSubmitAssessment = useCallback(async () => {
     const assessmentResults = calculateResults();
     setResults(assessmentResults);
     setIsCompleted(true);
@@ -247,7 +247,7 @@ const Assessment = () => {
         isCorrect: answers[q.id] === q.correctAnswer
       }))
     });
-  };
+  }, [calculateResults, saveAssessmentResult, questions, answers]);
 
   const getQuestionStatus = (index) => {
     const questionId = questions[index].id;
