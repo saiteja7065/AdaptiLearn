@@ -38,6 +38,7 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearSca
 import { Doughnut, Bar, Line } from 'react-chartjs-2';
 import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
+import FirestoreMonitor from './FirestoreMonitor';
 
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler);
@@ -378,6 +379,17 @@ const Dashboard = () => {
                   </Grid>
                 ))}
               </Grid>
+            </motion.div>
+          </Grid>
+
+          {/* Firestore Shield Monitor */}
+          <Grid item xs={12}>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.15 }}
+            >
+              <FirestoreMonitor />
             </motion.div>
           </Grid>
 

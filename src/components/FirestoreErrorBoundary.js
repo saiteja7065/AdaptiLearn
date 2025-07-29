@@ -1,16 +1,25 @@
 import React from 'react';
+import { resetConnection, handleFirestoreError } from '../firebase/connectionManager';
 
 class FirestoreErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, errorCount: 0 };
+    this.maxErrors = 5; // Prevent infinite error loops
   }
 
   static getDerivedStateFromError(error) {
-    // Check if this is a Firestore internal assertion error
-    if (error?.message?.includes('FIRESTORE') || 
-        error?.message?.includes('INTERNAL ASSERTION FAILED')) {
-      console.log('🔥 Firestore error caught by boundary:', error.message);
+    // Enhanced Firestore error detection
+    const errorMessage = error?.message || error?.toString() || '';
+    
+    if (errorMessage.includes('FIRESTORE') && 
+        (errorMessage.includes('INTERNAL ASSERTION FAILED') || 
+         errorMessage.includes('Unexpected state'))) {
+      console.log('🔥 Firestore INTERNAL ASSERTION error caught by boundary');
+      
+      // Reset Firestore connection immediately
+      resetConnection();
+      
       return { hasError: true, error };
     }
     
@@ -19,16 +28,28 @@ class FirestoreErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // Only handle Firestore-related errors
-    if (error?.message?.includes('FIRESTORE') || 
-        error?.message?.includes('INTERNAL ASSERTION FAILED')) {
-      console.error('🔥 Firestore Error Boundary:', error, errorInfo);
+    const errorMessage = error?.message || '';
+    
+    // Handle Firestore errors
+    if (handleFirestoreError(error)) {
+      console.error('🔥 Enhanced Firestore Error Boundary caught:', errorMessage);
       
-      // Attempt to recover from Firestore connection issues
-      setTimeout(() => {
-        console.log('🔄 Attempting to recover from Firestore error...');
-        this.setState({ hasError: false, error: null });
-      }, 2000);
+      // Increment error count
+      const newErrorCount = this.state.errorCount + 1;
+      
+      if (newErrorCount < this.maxErrors) {
+        // Attempt to recover after a longer delay
+        setTimeout(() => {
+          console.log('🔄 Attempting enhanced recovery from Firestore error...');
+          this.setState({ 
+            hasError: false, 
+            error: null, 
+            errorCount: newErrorCount 
+          });
+        }, 3000);
+      } else {
+        console.log('🚫 Max error recovery attempts reached');
+      }
     }
   }
 

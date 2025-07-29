@@ -18,7 +18,8 @@ import {
   LinearProgress,
   Card,
   CardContent,
-  Grid
+  Grid,
+  CircularProgress
 } from '@mui/material';
 import {
   School,
@@ -35,7 +36,17 @@ import { useUser } from '../contexts/UserContext';
 const ProfileSetup = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { branches, subjectsByBranch, semesters, createProfile, loading, userProfile } = useUser();
+  const { 
+    branches, 
+    subjectsByBranch, 
+    semesters, 
+    createProfile, 
+    loading, 
+    userProfile,
+    loadSubjectsForBranch,
+    loadingBranches,
+    loadingSubjects 
+  } = useUser();
   
   const [activeStep, setActiveStep] = useState(0);
   const [profileData, setProfileData] = useState({
@@ -45,6 +56,26 @@ const ProfileSetup = () => {
   });
   const [errors, setErrors] = useState({});
   const [alert, setAlert] = useState({ show: false, message: '', type: 'info' });
+  const [availableSubjects, setAvailableSubjects] = useState([]);
+
+  // Load subjects when branch changes
+  useEffect(() => {
+    const loadSubjects = async () => {
+      if (profileData.branch) {
+        try {
+          const subjects = await loadSubjectsForBranch(profileData.branch);
+          setAvailableSubjects(subjects);
+        } catch (error) {
+          console.error('Error loading subjects:', error);
+          setAvailableSubjects([]);
+        }
+      } else {
+        setAvailableSubjects([]);
+      }
+    };
+
+    loadSubjects();
+  }, [profileData.branch, loadSubjectsForBranch]);
 
   const steps = [
     {
@@ -70,8 +101,9 @@ const ProfileSetup = () => {
       return;
     }
     
-    // If user already has a profile set up, redirect to dashboard
-    if (userProfile?.setupCompleted) {
+    // If user already has a complete profile, redirect to dashboard
+    if (userProfile && userProfile.branch && userProfile.semester) {
+      console.log('✅ User already has a profile, redirecting to dashboard');
       navigate('/dashboard');
       return;
     }
@@ -202,7 +234,7 @@ const ProfileSetup = () => {
   };
 
   const getAvailableSubjects = () => {
-    return subjectsByBranch[profileData.branch] || [];
+    return availableSubjects;
   };
 
   const renderStepContent = (step) => {
@@ -338,6 +370,25 @@ const ProfileSetup = () => {
               Choose 3-6 subjects you want to focus on (recommended: 4-5 subjects)
             </Typography>
             
+            {/* Real-time indicator */}
+            {availableSubjects.length > 0 && (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                ✨ Real-time data loaded • {availableSubjects.length} subjects available for {
+                  branches.find(b => b.id === profileData.branch)?.name || 'your branch'
+                }
+              </Alert>
+            )}
+            
+            {/* Loading state */}
+            {loadingSubjects && (
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <CircularProgress size={20} sx={{ mr: 1 }} />
+                <Typography variant="body2" color="text.secondary">
+                  Loading subjects for {branches.find(b => b.id === profileData.branch)?.name}...
+                </Typography>
+              </Box>
+            )}
+            
             <div className="mb-4">
               <Typography variant="body2" className="text-neutral-600 mb-2">
                 Selected: {profileData.selectedSubjects.length}/6
@@ -375,17 +426,49 @@ const ProfileSetup = () => {
                       >
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between">
-                            <div>
-                              <Typography variant="body1" className="font-medium">
-                                {subject.name}
-                              </Typography>
-                              <Typography variant="body2" className="text-neutral-600">
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-1">
+                                <Typography variant="body1" className="font-medium">
+                                  {subject.name}
+                                </Typography>
+                                {isSelected && (
+                                  <CheckCircle className="text-primary-500" />
+                                )}
+                              </div>
+                              <Typography variant="body2" className="text-neutral-600 mb-2">
                                 {subject.code}
                               </Typography>
+                              
+                              {/* Enhanced metadata display */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {subject.difficulty && (
+                                  <Chip 
+                                    label={subject.difficulty} 
+                                    size="small"
+                                    color={
+                                      subject.difficulty === 'easy' ? 'success' :
+                                      subject.difficulty === 'medium' ? 'warning' : 'error'
+                                    }
+                                    variant="outlined"
+                                  />
+                                )}
+                                {subject.credits && (
+                                  <Chip 
+                                    label={`${subject.credits} credits`} 
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                )}
+                                {subject.popularity && subject.popularity > 80 && (
+                                  <Chip 
+                                    label="🔥 Popular" 
+                                    size="small"
+                                    color="secondary"
+                                    variant="outlined"
+                                  />
+                                )}
+                              </div>
                             </div>
-                            {isSelected && (
-                              <CheckCircle className="text-primary-500" />
-                            )}
                           </div>
                         </CardContent>
                       </Card>

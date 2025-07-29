@@ -1,10 +1,19 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
+// CRITICAL: Emergency protection must be loaded first
+import './firebase/emergencyProtection';
+
+// EMERGENCY: Activate Firestore Shield immediately
+import { forceOfflineFirestore } from './firebase/firestoreShield';
+
 // Firebase connection test
 import './firebaseTest';
+
+// Initialize Firestore Shield
+import './firebase/firestoreShield';
 
 // Components
 import LandingPage from './components/LandingPage';
@@ -17,11 +26,20 @@ import Analytics from './components/Analytics';
 import Feedback from './components/Feedback';
 import FirebaseTest from './components/FirebaseTest';
 import SyllabusUpload from './components/SyllabusUpload';
+import PDFUploadManager from './components/PDFUploadManager';
+import PDFBrowser from './components/PDFBrowser';
 import FirestoreErrorBoundary from './components/FirestoreErrorBoundary';
+import ProtectedRoute from './components/ProtectedRoute';
+import AuthenticatedRedirect from './components/AuthenticatedRedirect';
 
 // Context
 import { AuthProvider } from './contexts/AuthContext';
 import { UserProvider } from './contexts/UserContext';
+
+// EMERGENCY SHIELD ACTIVATION
+console.log('🛡️ EMERGENCY: Activating Firestore Shield Protection');
+// Force protection mode due to severe errors
+forceOfflineFirestore();
 
 // Custom Material-UI Theme
 const theme = createTheme({
@@ -170,6 +188,22 @@ const theme = createTheme({
 });
 
 function App() {
+  // Initialize ultimate error protection
+  useEffect(() => {
+    console.log('🛡️ AdaptiLearn App starting with Firestore Shield protection');
+    
+    // Additional global error monitoring
+    const handleUnhandledError = (event) => {
+      if (event.error?.message?.includes('FIRESTORE')) {
+        console.log('🚨 App-level Firestore error intercepted');
+        event.preventDefault();
+      }
+    };
+    
+    window.addEventListener('error', handleUnhandledError);
+    return () => window.removeEventListener('error', handleUnhandledError);
+  }, []);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -181,14 +215,87 @@ function App() {
                 <Routes>
                   <Route path="/" element={<LandingPage />} />
                   <Route path="/auth" element={<AuthPage />} />
-                  <Route path="/profile-setup" element={<ProfileSetup />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/assessment" element={<Assessment />} />
-                  <Route path="/mock-test" element={<MockTest />} />
-                  <Route path="/analytics" element={<Analytics />} />
-                  <Route path="/feedback" element={<Feedback />} />
-                  <Route path="/firebase-test" element={<FirebaseTest />} />
-                  <Route path="/syllabus" element={<SyllabusUpload />} />
+                  <Route path="/redirect" element={<AuthenticatedRedirect />} />
+                  <Route 
+                    path="/profile-setup" 
+                    element={
+                      <ProtectedRoute requiresProfile={false}>
+                        <ProfileSetup />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/dashboard" 
+                    element={
+                      <ProtectedRoute>
+                        <Dashboard />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/assessment" 
+                    element={
+                      <ProtectedRoute>
+                        <Assessment />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/mock-test" 
+                    element={
+                      <ProtectedRoute>
+                        <MockTest />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/analytics" 
+                    element={
+                      <ProtectedRoute>
+                        <Analytics />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/feedback" 
+                    element={
+                      <ProtectedRoute>
+                        <Feedback />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/firebase-test" 
+                    element={
+                      <ProtectedRoute requiresProfile={false}>
+                        <FirebaseTest />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/syllabus" 
+                    element={
+                      <ProtectedRoute>
+                        <SyllabusUpload />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/pdf-upload" 
+                    element={
+                      <ProtectedRoute>
+                        <PDFUploadManager />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/pdf-browser" 
+                    element={
+                      <ProtectedRoute>
+                        <PDFBrowser />
+                      </ProtectedRoute>
+                    } 
+                  />
                 </Routes>
               </div>
             </Router>

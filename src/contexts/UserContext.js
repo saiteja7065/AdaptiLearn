@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
+import realTimeDataService from '../services/realTimeDataService';
 import { 
   createUserDocumentFromAuth, 
   getUserDocument, 
@@ -26,47 +27,75 @@ export const UserProvider = ({ children }) => {
   const [assessmentResults, setAssessmentResults] = useState([]);
   const [mockTestResults, setMockTestResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  // Real-time data states
+  const [branches, setBranches] = useState([]);
+  const [subjectsByBranch, setSubjectsByBranch] = useState({});
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [loadingSubjects, setLoadingSubjects] = useState(false);
 
-  // Available branches and subjects
-  const branches = [
-    { id: 'cse', name: 'Computer Science Engineering', code: 'CSE' },
-    { id: 'ece', name: 'Electronics and Communication Engineering', code: 'ECE' },
-    { id: 'mech', name: 'Mechanical Engineering', code: 'MECH' },
-    { id: 'civil', name: 'Civil Engineering', code: 'CIVIL' },
-    { id: 'eee', name: 'Electrical and Electronics Engineering', code: 'EEE' },
-    { id: 'it', name: 'Information Technology', code: 'IT' },
-    { id: 'chem', name: 'Chemical Engineering', code: 'CHEM' },
-    { id: 'aero', name: 'Aeronautical Engineering', code: 'AERO' }
-  ];
+  // Load branches on component mount
+  useEffect(() => {
+    loadBranches();
+  }, []);
 
-  const subjectsByBranch = {
-    cse: [
-      { id: 'ds', name: 'Data Structures', code: 'DS' },
-      { id: 'algo', name: 'Algorithms', code: 'ALGO' },
-      { id: 'dbms', name: 'Database Management Systems', code: 'DBMS' },
-      { id: 'os', name: 'Operating Systems', code: 'OS' },
-      { id: 'cn', name: 'Computer Networks', code: 'CN' },
-      { id: 'se', name: 'Software Engineering', code: 'SE' },
-      { id: 'oops', name: 'Object Oriented Programming', code: 'OOPS' },
-      { id: 'web', name: 'Web Technologies', code: 'WEB' }
-    ],
-    ece: [
-      { id: 'signals', name: 'Signals and Systems', code: 'SS' },
-      { id: 'comm', name: 'Communication Systems', code: 'COMM' },
-      { id: 'dsp', name: 'Digital Signal Processing', code: 'DSP' },
-      { id: 'vlsi', name: 'VLSI Design', code: 'VLSI' },
-      { id: 'embedded', name: 'Embedded Systems', code: 'ES' },
-      { id: 'microwave', name: 'Microwave Engineering', code: 'MW' }
-    ],
-    mech: [
-      { id: 'thermo', name: 'Thermodynamics', code: 'THERMO' },
-      { id: 'fluid', name: 'Fluid Mechanics', code: 'FM' },
-      { id: 'som', name: 'Strength of Materials', code: 'SOM' },
-      { id: 'manufacturing', name: 'Manufacturing Processes', code: 'MP' },
-      { id: 'design', name: 'Machine Design', code: 'MD' },
-      { id: 'heat', name: 'Heat Transfer', code: 'HT' }
-    ],
-    // Add more subjects for other branches as needed
+  // Load branches from real-time service
+  const loadBranches = async () => {
+    setLoadingBranches(true);
+    try {
+      const branchesData = await realTimeDataService.getBranches();
+      setBranches(branchesData);
+    } catch (error) {
+      console.error('Error loading branches:', error);
+      // Fallback to static data
+      setBranches([
+        { id: 'cse', name: 'Computer Science Engineering', code: 'CSE', popularity: 95 },
+        { id: 'ece', name: 'Electronics and Communication Engineering', code: 'ECE', popularity: 85 },
+        { id: 'mech', name: 'Mechanical Engineering', code: 'MECH', popularity: 80 },
+        { id: 'civil', name: 'Civil Engineering', code: 'CIVIL', popularity: 75 },
+        { id: 'eee', name: 'Electrical and Electronics Engineering', code: 'EEE', popularity: 70 },
+        { id: 'it', name: 'Information Technology', code: 'IT', popularity: 90 },
+        { id: 'chem', name: 'Chemical Engineering', code: 'CHEM', popularity: 65 },
+        { id: 'aero', name: 'Aeronautical Engineering', code: 'AERO', popularity: 60 }
+      ]);
+    } finally {
+      setLoadingBranches(false);
+    }
+  };
+
+  // Load subjects for a specific branch
+  const loadSubjectsForBranch = async (branchId) => {
+    if (subjectsByBranch[branchId]) {
+      return subjectsByBranch[branchId]; // Return cached data
+    }
+
+    setLoadingSubjects(true);
+    try {
+      const subjects = await realTimeDataService.getSubjectsByBranch(branchId);
+      setSubjectsByBranch(prev => ({
+        ...prev,
+        [branchId]: subjects
+      }));
+      return subjects;
+    } catch (error) {
+      console.error(`Error loading subjects for ${branchId}:`, error);
+      return [];
+    } finally {
+      setLoadingSubjects(false);
+    }
+  };
+
+  // Get subjects for a branch (with real-time loading)
+  const getSubjectsForBranch = (branchId) => {
+    if (!branchId) return [];
+    
+    // If not loaded, trigger loading
+    if (!subjectsByBranch[branchId]) {
+      loadSubjectsForBranch(branchId);
+      return [];
+    }
+    
+    return subjectsByBranch[branchId];
   };
 
   const semesters = [
@@ -98,6 +127,20 @@ export const UserProvider = ({ children }) => {
       
       // Save to Firebase
       await createUserDocumentFromAuth(user, profile);
+      
+      // Save subject preferences for analytics using real-time service
+      if (profileData.selectedSubjects && profileData.selectedSubjects.length > 0) {
+        const subjectsData = await loadSubjectsForBranch(profileData.branch);
+        const selectedSubjectsDetails = subjectsData.filter(s => 
+          profileData.selectedSubjects.includes(s.id)
+        );
+        
+        await realTimeDataService.saveSubjectPreferences(
+          user.uid, 
+          profileData.branch, 
+          selectedSubjectsDetails
+        );
+      }
       
       setUserProfile(profile);
       
@@ -296,13 +339,18 @@ export const UserProvider = ({ children }) => {
     mockTestResults,
     loading,
     branches,
-    subjectsByBranch,
+    subjectsByBranch: getSubjectsForBranch, // Function to get subjects dynamically
     semesters,
     createProfile,
     updateProfile,
     saveAssessmentResult,
     saveMockTestResult,
-    getPerformanceAnalytics
+    getPerformanceAnalytics,
+    // Real-time data functions
+    loadSubjectsForBranch,
+    loadingBranches,
+    loadingSubjects,
+    realTimeService: realTimeDataService
   };
 
   return (

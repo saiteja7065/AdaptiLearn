@@ -11,23 +11,36 @@ import {
   RadioGroup,
   FormControlLabel,
   FormControl,
-  Chip
+  Chip,
+  Alert,
+  CircularProgress,
+  Select,
+  MenuItem,
+  FormLabel,
+  Box
 } from '@mui/material';
 import {
   Timer,
   CheckCircle,
   NavigateNext,
-  NavigateBefore
+  NavigateBefore,
+  Quiz,
+  School
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
+import { 
+  getUserSyllabi, 
+  generateQuestionsFromSyllabus 
+} from '../firebase/syllabusManager';
 
 const Assessment = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { userProfile, saveAssessmentResult } = useUser();
   
+  // Assessment states
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState({});
   const [timeLeft, setTimeLeft] = useState(1800); // 30 minutes
@@ -35,10 +48,68 @@ const Assessment = () => {
   const [showResults, setShowResults] = useState(false);
   const [results, setResults] = useState(null);
 
-  // Sample assessment questions
-  const questions = [
+  // Syllabus integration states
+  const [availableSyllabi, setAvailableSyllabi] = useState([]);
+  const [selectedSyllabus, setSelectedSyllabus] = useState('');
+  const [assessmentMode, setAssessmentMode] = useState('adaptive'); // 'adaptive' or 'syllabus'
+  const [questions, setQuestions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Load user syllabi on component mount
+  useEffect(() => {
+    const loadSyllabi = async () => {
+      if (user) {
+        try {
+          const syllabi = await getUserSyllabi(user.uid);
+          setAvailableSyllabi(syllabi);
+        } catch (error) {
+          console.error('Error loading syllabi:', error);
+          setError('Failed to load syllabi');
+        }
+      }
+    };
+    
+    loadSyllabi();
+  }, [user]);
+
+  // Load default adaptive questions or syllabus-based questions
+  useEffect(() => {
+    const loadQuestions = async () => {
+      if (assessmentMode === 'syllabus' && selectedSyllabus) {
+        setLoading(true);
+        try {
+          const result = await generateQuestionsFromSyllabus(selectedSyllabus, {
+            difficulty: 'medium',
+            questionCount: 10
+          });
+          
+          if (result.success) {
+            setQuestions(result.questions);
+            setError('');
+          } else {
+            setError(result.error || 'Failed to generate questions');
+            setQuestions(getDefaultQuestions()); // Fallback
+          }
+        } catch (error) {
+          console.error('Error generating questions:', error);
+          setError('Failed to generate questions from syllabus');
+          setQuestions(getDefaultQuestions()); // Fallback
+        } finally {
+          setLoading(false);
+        }
+      } else if (assessmentMode === 'adaptive') {
+        setQuestions(getDefaultQuestions());
+      }
+    };
+
+    loadQuestions();
+  }, [assessmentMode, selectedSyllabus]);
+
+  // Default adaptive questions for fallback
+  const getDefaultQuestions = () => [
     {
-      id: 1,
+      id: 'default_1',
       subject: 'Data Structures',
       difficulty: 'Medium',
       question: 'What is the time complexity of inserting an element at the beginning of a linked list?',
@@ -47,7 +118,7 @@ const Assessment = () => {
       explanation: 'Inserting at the beginning of a linked list is O(1) as it only requires updating pointers.'
     },
     {
-      id: 2,
+      id: 'default_2',
       subject: 'Algorithms',
       difficulty: 'Hard',
       question: 'Which sorting algorithm has the best average-case time complexity?',
@@ -56,7 +127,7 @@ const Assessment = () => {
       explanation: 'Merge Sort has consistent O(n log n) time complexity in all cases.'
     },
     {
-      id: 3,
+      id: 'default_3',
       subject: 'Database Systems',
       difficulty: 'Easy',
       question: 'What does ACID stand for in database transactions?',
@@ -70,7 +141,7 @@ const Assessment = () => {
       explanation: 'ACID represents the four key properties that guarantee reliable database transactions.'
     },
     {
-      id: 4,
+      id: 'default_4',
       subject: 'Operating Systems',
       difficulty: 'Medium',
       question: 'What is a deadlock in operating systems?',
@@ -84,7 +155,7 @@ const Assessment = () => {
       explanation: 'Deadlock occurs when processes are blocked waiting for resources held by other blocked processes.'
     },
     {
-      id: 5,
+      id: 'default_5',
       subject: 'Computer Networks',
       difficulty: 'Medium',
       question: 'Which layer of the OSI model handles routing?',
@@ -297,6 +368,156 @@ const Assessment = () => {
     );
   }
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-secondary-50 via-neutral-50 to-primary-50 py-8">
+        <Container maxWidth="md">
+          <Card className="card-elevated">
+            <CardContent className="p-8 text-center">
+              <CircularProgress size={60} className="mb-4" />
+              <Typography variant="h6" className="mb-2">
+                Generating Questions...
+              </Typography>
+              <Typography variant="body2" className="text-neutral-600">
+                Creating personalized assessment from your syllabus
+              </Typography>
+            </CardContent>
+          </Card>
+        </Container>
+      </div>
+    );
+  }
+
+  // Show setup screen if no questions loaded yet
+  if (questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-secondary-50 via-neutral-50 to-primary-50 py-8">
+        <Container maxWidth="md">
+          <Card className="card-elevated">
+            <CardContent className="p-8">
+              <div className="text-center mb-8">
+                <Quiz sx={{ fontSize: 60, color: '#667eea', mb: 2 }} />
+                <Typography variant="h4" className="font-bold mb-2">
+                  Assessment Setup
+                </Typography>
+                <Typography variant="body1" className="text-neutral-600">
+                  Choose your assessment type to get started
+                </Typography>
+              </div>
+
+              {error && (
+                <Alert severity="error" className="mb-6">
+                  {error}
+                </Alert>
+              )}
+
+              {/* Assessment Mode Selection */}
+              <Box className="mb-6">
+                <FormLabel component="legend" className="font-semibold mb-3">
+                  Assessment Type
+                </FormLabel>
+                <FormControl component="fieldset">
+                  <RadioGroup
+                    value={assessmentMode}
+                    onChange={(e) => setAssessmentMode(e.target.value)}
+                    row
+                  >
+                    <FormControlLabel
+                      value="adaptive"
+                      control={<Radio />}
+                      label={
+                        <Box>
+                          <Typography variant="subtitle2">Adaptive Assessment</Typography>
+                          <Typography variant="caption" className="text-neutral-600">
+                            General questions that adapt to your performance
+                          </Typography>
+                        </Box>
+                      }
+                    />
+                    <FormControlLabel
+                      value="syllabus"
+                      control={<Radio />}
+                      label={
+                        <Box>
+                          <Typography variant="subtitle2">Syllabus-Based</Typography>
+                          <Typography variant="caption" className="text-neutral-600">
+                            Questions generated from your uploaded syllabus
+                          </Typography>
+                        </Box>
+                      }
+                    />
+                  </RadioGroup>
+                </FormControl>
+              </Box>
+
+              {/* Syllabus Selection */}
+              {assessmentMode === 'syllabus' && (
+                <Box className="mb-6">
+                  <FormLabel className="font-semibold mb-3 block">
+                    <School className="mr-2" />
+                    Select Syllabus
+                  </FormLabel>
+                  <Select
+                    value={selectedSyllabus}
+                    onChange={(e) => setSelectedSyllabus(e.target.value)}
+                    fullWidth
+                    displayEmpty
+                    disabled={availableSyllabi.length === 0}
+                  >
+                    <MenuItem value="">
+                      <em>Select a syllabus for questions...</em>
+                    </MenuItem>
+                    {availableSyllabi.map((syllabus) => (
+                      <MenuItem key={syllabus.id} value={syllabus.id}>
+                        <Box>
+                          <Typography variant="subtitle2">
+                            {syllabus.fileName}
+                          </Typography>
+                          <Typography variant="caption" className="text-neutral-600">
+                            {syllabus.branchId} • Semester {syllabus.semester} • {syllabus.topics?.length || 0} topics
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  
+                  {availableSyllabi.length === 0 && (
+                    <Alert severity="info" className="mt-3">
+                      No syllabi found. Please upload a syllabus first or use Adaptive Assessment.
+                    </Alert>
+                  )}
+                </Box>
+              )}
+
+              {/* Start Button */}
+              <Box className="text-center">
+                <Button
+                  variant="contained"
+                  size="large"
+                  onClick={() => {
+                    if (assessmentMode === 'adaptive' || selectedSyllabus) {
+                      // Questions will be loaded by useEffect
+                      console.log('Starting assessment...');
+                    }
+                  }}
+                  disabled={assessmentMode === 'syllabus' && !selectedSyllabus}
+                  sx={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    px: 4,
+                    py: 1.5
+                  }}
+                >
+                  Start Assessment
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        </Container>
+      </div>
+    );
+  }
+
   // Assessment screen
   const currentQ = questions[currentQuestion];
   const progress = ((currentQuestion + 1) / questions.length) * 100;
@@ -310,10 +531,15 @@ const Assessment = () => {
             <div className="flex justify-between items-center mb-6">
               <div>
                 <Typography variant="h5" className="font-bold">
-                  Baseline Assessment
+                  {assessmentMode === 'syllabus' ? 'Syllabus-Based Assessment' : 'Adaptive Assessment'}
                 </Typography>
                 <Typography variant="body2" className="text-neutral-600">
                   Question {currentQuestion + 1} of {questions.length}
+                  {assessmentMode === 'syllabus' && (
+                    <span className="ml-2">
+                      • {availableSyllabi.find(s => s.id === selectedSyllabus)?.fileName}
+                    </span>
+                  )}
                 </Typography>
               </div>
               <div className="text-right">

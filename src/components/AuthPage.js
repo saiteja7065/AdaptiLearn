@@ -120,7 +120,7 @@ const AuthPage = () => {
         });
         
         setTimeout(() => {
-          navigate('/dashboard');
+          navigate('/redirect');
         }, 1500);
       } else {
         setAlert({
@@ -150,7 +150,7 @@ const AuthPage = () => {
         });
         
         setTimeout(() => {
-          navigate('/dashboard');
+          navigate('/redirect');
         }, 1500);
       } else {
         setAlert({

@@ -1,11 +1,13 @@
-// Firestore Connection Manager
-// Prevents multiple connection attempts and manages connection state
+// Enhanced Firestore Connection Manager
+// Prevents INTERNAL ASSERTION FAILED errors with simplified connection handling
 
 let connectionPromise = null;
 let isConnected = false;
+let connectionAttempts = 0;
+const MAX_CONNECTION_ATTEMPTS = 3;
 
 export const getFirestoreConnection = async () => {
-  // Return existing connection if available
+  // Return immediately if already connected
   if (isConnected) {
     return Promise.resolve();
   }
@@ -15,28 +17,40 @@ export const getFirestoreConnection = async () => {
     return connectionPromise;
   }
   
+  // Prevent infinite connection attempts
+  if (connectionAttempts >= MAX_CONNECTION_ATTEMPTS) {
+    console.log('🚫 Max connection attempts reached, using offline mode');
+    return Promise.resolve();
+  }
+  
   // Create new connection attempt
-  connectionPromise = new Promise(async (resolve, reject) => {
+  connectionPromise = new Promise(async (resolve) => {
     try {
-      console.log('🔗 Establishing Firestore connection...');
+      connectionAttempts++;
+      console.log(`🔗 Firestore connection attempt ${connectionAttempts}...`);
       
-      // Import Firestore here to avoid circular dependencies
-      const { db, enableNetwork, disableNetwork } = await import('./config');
+      // Short delay to prevent rapid reconnection
+      await new Promise(resolve => setTimeout(resolve, 200));
       
-      // Reset connection state in development
-      if (process.env.NODE_ENV === 'development') {
-        await disableNetwork(db);
-        await new Promise(resolve => setTimeout(resolve, 50));
-        await enableNetwork(db);
-      }
+      // Import Firestore safely
+      const { db } = await import('./safeConfig');
+      
+      // Simple connection test without network manipulation
+      const testCollection = db.collection('_health_check');
+      const testDoc = testCollection.doc('ping');
+      
+      // Minimal read operation to verify connection
+      await testDoc.get();
       
       isConnected = true;
-      console.log('✅ Firestore connection established');
+      connectionAttempts = 0; // Reset on success
+      console.log('✅ Firestore connection established successfully');
       resolve();
       
     } catch (error) {
-      console.log('⚠️ Firestore connection issue:', error.message);
-      // Don't reject - allow app to continue with limited functionality
+      console.log(`⚠️ Firestore connection attempt ${connectionAttempts} failed:`, error.message);
+      
+      // Always resolve to prevent blocking the app
       isConnected = false;
       resolve();
     } finally {
@@ -50,31 +64,60 @@ export const getFirestoreConnection = async () => {
 export const resetConnection = () => {
   isConnected = false;
   connectionPromise = null;
+  connectionAttempts = 0;
   console.log('🔄 Firestore connection reset');
 };
 
-// Global error handler for Firestore errors
+// Enhanced error handler for Firestore INTERNAL ASSERTION FAILED errors
 export const handleFirestoreError = (error) => {
-  if (error?.message?.includes('FIRESTORE') || 
-      error?.message?.includes('INTERNAL ASSERTION FAILED')) {
-    console.log('🔥 Firestore error intercepted:', error.message);
+  const errorMessage = error?.message || error?.toString() || '';
+  
+  if (errorMessage.includes('FIRESTORE') && 
+      errorMessage.includes('INTERNAL ASSERTION FAILED')) {
+    console.log('🔥 Firestore INTERNAL ASSERTION FAILED error intercepted');
     resetConnection();
     return true; // Error handled
   }
+  
+  if (errorMessage.includes('FIRESTORE') || 
+      errorMessage.includes('Unexpected state')) {
+    console.log('🔥 Firestore error intercepted:', errorMessage);
+    resetConnection();
+    return true; // Error handled
+  }
+  
   return false; // Error not handled
 };
 
-// Setup global error listener
+// Comprehensive global error listeners
 if (typeof window !== 'undefined') {
+  // Handle uncaught errors
   window.addEventListener('error', (event) => {
     if (handleFirestoreError(event.error)) {
       event.preventDefault();
+      event.stopPropagation();
     }
   });
   
+  // Handle unhandled promise rejections
   window.addEventListener('unhandledrejection', (event) => {
     if (handleFirestoreError(event.reason)) {
       event.preventDefault();
+      event.stopPropagation();
     }
   });
 }
+
+// Safe Firestore operation wrapper
+export const safeFirestoreOperation = async (operation, fallback = null) => {
+  try {
+    await getFirestoreConnection();
+    return await operation();
+  } catch (error) {
+    if (handleFirestoreError(error)) {
+      console.log('🛡️ Firestore operation failed safely, using fallback');
+      return fallback;
+    }
+    throw error;
+  }
+};
