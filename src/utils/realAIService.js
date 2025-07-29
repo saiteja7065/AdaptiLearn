@@ -1,40 +1,63 @@
 // Real AI service integration for question generation
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import apiService from '../services/apiService';
 
 class RealAIQuestionGenerator {
   constructor() {
-    // Initialize Gemini API (fallback to mock if no API key)
+    // Use the centralized API service for all backend communication
+    this.apiService = apiService;
+    
+    // Legacy API keys for fallback
     this.geminiApiKey = process.env.REACT_APP_GEMINI_API_KEY;
     this.openaiApiKey = process.env.REACT_APP_OPENAI_API_KEY;
-    
-    if (this.geminiApiKey) {
-      this.genAI = new GoogleGenerativeAI(this.geminiApiKey);
-      this.model = this.genAI.getGenerativeModel({ model: "gemini-pro" });
-    }
   }
 
-  // Extract topics from PDF text using AI
+  // Extract topics from PDF text using backend AI service
   async extractTopicsFromText(text, branchId, semester) {
     try {
       if (!text || text.trim().length === 0) {
         throw new Error('No text content provided');
       }
 
-      // Use AI if available, otherwise fallback to intelligent parsing
-      if (this.geminiApiKey && this.model) {
-        return await this.aiExtractTopics(text, branchId, semester);
-      } else {
-        return await this.intelligentTopicExtraction(text, branchId, semester);
+      // Use backend AI service for analysis
+      const analysis = await this.apiService.analyzeContent(text, 'syllabus');
+      
+      if (analysis && analysis.topics) {
+        return {
+          success: true,
+          topics: analysis.topics,
+          subjects: this.organizeBySubjects(analysis.topics, branchId),
+          difficulty: analysis.difficulty || 'medium',
+          extractedBy: 'backend_ai'
+        };
       }
+
+      // Fallback to intelligent parsing
+      return await this.intelligentTopicExtraction(text, branchId, semester);
+
     } catch (error) {
       console.error('Error extracting topics:', error);
-      return {
-        success: false,
-        error: error.message,
-        topics: [],
-        subjects: []
-      };
+      // Fallback to local extraction
+      return await this.intelligentTopicExtraction(text, branchId, semester);
     }
+  }
+
+  // Organize topics by subjects
+  organizeBySubjects(topics, branchId) {
+    const subjectMapping = {
+      'cse': ['Programming', 'Data Structures', 'Algorithms', 'Database Systems', 'Operating Systems'],
+      'ece': ['Digital Electronics', 'Signal Processing', 'Communication Systems', 'Microprocessors'],
+      'mechanical': ['Thermodynamics', 'Fluid Mechanics', 'Machine Design', 'Manufacturing'],
+      'civil': ['Structural Engineering', 'Geotechnical Engineering', 'Transportation', 'Environmental']
+    };
+
+    const branchSubjects = subjectMapping[branchId.toLowerCase()] || ['General'];
+    
+    return branchSubjects.map(subject => ({
+      name: subject,
+      topics: topics.filter(topic => 
+        topic.toLowerCase().includes(subject.toLowerCase().split(' ')[0])
+      ).slice(0, 5)
+    })).filter(subject => subject.topics.length > 0);
   }
 
   // AI-powered topic extraction using Gemini
@@ -178,21 +201,40 @@ class RealAIQuestionGenerator {
     return analysis;
   }
 
-  // Generate questions using AI or intelligent templates
+  // Generate questions using backend AI service
   async generateQuestionsFromTopics(topics, subject, difficulty = 'medium', count = 5) {
     try {
-      if (this.geminiApiKey && this.model) {
-        return await this.aiGenerateQuestions(topics, subject, difficulty, count);
-      } else {
-        return await this.templateBasedQuestions(topics, subject, difficulty, count);
+      // Use backend API service for question generation
+      const topicString = Array.isArray(topics) ? topics.join(', ') : topics;
+      const questions = await this.apiService.generateQuestions(
+        `${subject}: ${topicString}`, 
+        difficulty, 
+        count
+      );
+
+      if (questions && questions.length > 0) {
+        // Track the activity
+        await this.apiService.trackActivity('questions_generated', {
+          topic: subject,
+          difficulty,
+          count: questions.length
+        });
+
+        return {
+          success: true,
+          questions: questions,
+          generatedBy: 'backend_ai',
+          timestamp: new Date().toISOString()
+        };
       }
+
+      // Fallback to template-based questions
+      return await this.templateBasedQuestions(topics, subject, difficulty, count);
+
     } catch (error) {
       console.error('Error generating questions:', error);
-      return {
-        success: false,
-        error: error.message,
-        questions: []
-      };
+      // Fallback to template-based questions
+      return await this.templateBasedQuestions(topics, subject, difficulty, count);
     }
   }
 

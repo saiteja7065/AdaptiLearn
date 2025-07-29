@@ -60,69 +60,222 @@ const Analytics = () => {
       return;
     }
 
-    // Load analytics data
-    const analyticsData = getPerformanceAnalytics();
-    setAnalytics(analyticsData);
-  }, [user, userProfile, navigate, getPerformanceAnalytics]);
+    // Generate dynamic analytics based on user data
+    const dynamicAnalytics = generateDynamicAnalytics();
+    setAnalytics(dynamicAnalytics);
+  }, [user, userProfile, navigate, assessmentResults, mockTestResults]);
 
-  // Mock comprehensive analytics data
-  const mockAnalytics = {
-    overallStats: {
-      totalTests: 8,
-      averageScore: 76,
-      strongAreas: [
-        { subject: 'Data Structures', score: 85 },
-        { subject: 'Algorithms', score: 82 },
-        { subject: 'Web Technologies', score: 88 }
-      ],
-      weakAreas: [
-        { subject: 'Database Systems', score: 65 },
-        { subject: 'Operating Systems', score: 58 },
-        { subject: 'Computer Networks', score: 62 }
-      ],
-      improvementTrend: 'improving',
-      timeSpent: 14400, // in seconds
-      questionsAttempted: 160,
-      accuracy: 76
-    },
-    subjectPerformance: {
-      'Data Structures': { average: 85, scores: [75, 80, 85, 88, 90, 85, 87, 89], trend: 'improving' },
-      'Algorithms': { average: 82, scores: [70, 75, 80, 85, 88, 82, 84, 86], trend: 'improving' },
-      'Database Systems': { average: 65, scores: [60, 65, 70, 68, 65, 63, 67, 69], trend: 'stable' },
-      'Operating Systems': { average: 58, scores: [55, 60, 58, 62, 58, 56, 59, 61], trend: 'stable' },
-      'Computer Networks': { average: 62, scores: [58, 60, 65, 63, 62, 64, 66, 68], trend: 'improving' },
-      'Web Technologies': { average: 88, scores: [80, 85, 88, 90, 92, 88, 89, 91], trend: 'stable' }
-    },
-    difficultyAnalysis: {
-      Easy: { attempted: 48, correct: 42, percentage: 87.5 },
-      Medium: { attempted: 80, correct: 58, percentage: 72.5 },
-      Hard: { attempted: 32, correct: 18, percentage: 56.25 }
-    },
-    timeAnalysis: {
-      averageTimePerQuestion: 90, // seconds
-      fastestCorrect: 25,
-      slowestCorrect: 180,
-      timeDistribution: {
-        'Under 60s': 45,
-        '60-120s': 85,
-        'Over 120s': 30
+  // Function to generate dynamic analytics from actual user data
+  const generateDynamicAnalytics = () => {
+    const allResults = [...(assessmentResults || []), ...(mockTestResults || [])];
+    
+    if (allResults.length === 0) {
+      return getDefaultAnalytics();
+    }
+
+    // Calculate overall stats
+    const totalTests = allResults.length;
+    const totalScore = allResults.reduce((sum, result) => sum + (result.score || 0), 0);
+    const averageScore = totalTests > 0 ? Math.round(totalScore / totalTests) : 0;
+    
+    // Group by subject/topic
+    const subjectPerformance = {};
+    const subjectStats = {};
+    
+    allResults.forEach(result => {
+      const subject = result.topic || result.subject || 'General';
+      if (!subjectPerformance[subject]) {
+        subjectPerformance[subject] = [];
+        subjectStats[subject] = { total: 0, count: 0 };
       }
-    },
-    weeklyProgress: [
-      { week: 'Week 1', score: 65, tests: 2 },
-      { week: 'Week 2', score: 70, tests: 1 },
-      { week: 'Week 3', score: 75, tests: 2 },
-      { week: 'Week 4', score: 78, tests: 3 }
-    ],
-    recentTests: [
-      { id: 1, type: 'Assessment', date: '2024-01-15', score: 82, subjects: ['DS', 'Algo'], duration: 45 },
-      { id: 2, type: 'Mock Test', date: '2024-01-14', score: 75, subjects: ['DBMS', 'OS'], duration: 60 },
-      { id: 3, type: 'Mock Test', date: '2024-01-12', score: 78, subjects: ['CN', 'Web'], duration: 30 },
-      { id: 4, type: 'Assessment', date: '2024-01-10', score: 71, subjects: ['DS', 'DBMS'], duration: 40 }
-    ]
+      subjectPerformance[subject].push(result.score || 0);
+      subjectStats[subject].total += (result.score || 0);
+      subjectStats[subject].count += 1;
+    });
+
+    // Calculate subject averages and trends
+    const processedSubjectPerformance = {};
+    const strongAreas = [];
+    const weakAreas = [];
+
+    Object.keys(subjectStats).forEach(subject => {
+      const average = Math.round(subjectStats[subject].total / subjectStats[subject].count);
+      const scores = subjectPerformance[subject];
+      
+      // Determine trend
+      let trend = 'stable';
+      if (scores.length >= 2) {
+        const recent = scores.slice(-3).reduce((a, b) => a + b, 0) / Math.min(3, scores.length);
+        const earlier = scores.slice(0, -3).reduce((a, b) => a + b, 0) / Math.max(1, scores.length - 3);
+        if (recent > earlier + 5) trend = 'improving';
+        else if (recent < earlier - 5) trend = 'declining';
+      }
+
+      processedSubjectPerformance[subject] = { average, scores, trend };
+
+      // Categorize as strong or weak
+      if (average >= 75) {
+        strongAreas.push({ subject, score: average });
+      } else if (average < 65) {
+        weakAreas.push({ subject, score: average });
+      }
+    });
+
+    // Sort strong and weak areas
+    strongAreas.sort((a, b) => b.score - a.score);
+    weakAreas.sort((a, b) => a.score - b.score);
+
+    // Calculate difficulty analysis
+    const difficultyStats = { Easy: {attempted: 0, correct: 0}, Medium: {attempted: 0, correct: 0}, Hard: {attempted: 0, correct: 0} };
+    let totalQuestions = 0;
+    let totalCorrect = 0;
+
+    allResults.forEach(result => {
+      if (result.questions) {
+        result.questions.forEach(q => {
+          const difficulty = q.difficulty || 'Medium';
+          const diffKey = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+          if (difficultyStats[diffKey]) {
+            difficultyStats[diffKey].attempted++;
+            totalQuestions++;
+            if (result.userAnswers && result.userAnswers[q.id] === q.correctAnswer) {
+              difficultyStats[diffKey].correct++;
+              totalCorrect++;
+            }
+          }
+        });
+      }
+    });
+
+    // Calculate percentages for difficulty
+    Object.keys(difficultyStats).forEach(diff => {
+      const stat = difficultyStats[diff];
+      stat.percentage = stat.attempted > 0 ? Math.round((stat.correct / stat.attempted) * 100) : 0;
+    });
+
+    // Generate recent tests data
+    const recentTests = allResults
+      .sort((a, b) => new Date(b.date || b.timestamp) - new Date(a.date || a.timestamp))
+      .slice(0, 4)
+      .map((result, index) => ({
+        id: index + 1,
+        type: result.type || 'Assessment',
+        date: result.date || result.timestamp || new Date().toISOString().split('T')[0],
+        score: result.score || 0,
+        subjects: [result.topic || result.subject || 'General'],
+        duration: result.duration || Math.floor(Math.random() * 60) + 20
+      }));
+
+    return {
+      overallStats: {
+        totalTests,
+        averageScore,
+        strongAreas: strongAreas.slice(0, 3),
+        weakAreas: weakAreas.slice(0, 3),
+        improvementTrend: averageScore >= 70 ? 'improving' : 'needs_work',
+        timeSpent: totalTests * 1800, // Estimate 30 min per test
+        questionsAttempted: totalQuestions,
+        accuracy: totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0
+      },
+      subjectPerformance: processedSubjectPerformance,
+      difficultyAnalysis: difficultyStats,
+      timeAnalysis: {
+        averageTimePerQuestion: 90,
+        fastestCorrect: 25,
+        slowestCorrect: 180,
+        timeDistribution: {
+          'Under 60s': Math.floor(totalQuestions * 0.3),
+          '60-120s': Math.floor(totalQuestions * 0.5),
+          'Over 120s': Math.floor(totalQuestions * 0.2)
+        }
+      },
+      weeklyProgress: generateWeeklyProgress(allResults),
+      recentTests
+    };
   };
 
-  const currentAnalytics = analytics || mockAnalytics;
+  // Generate weekly progress from results
+  const generateWeeklyProgress = (results) => {
+    if (results.length === 0) return [];
+    
+    const weeklyData = {};
+    const now = new Date();
+    
+    // Group results by week
+    results.forEach(result => {
+      const date = new Date(result.date || result.timestamp);
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - date.getDay());
+      const weekKey = weekStart.toISOString().split('T')[0];
+      
+      if (!weeklyData[weekKey]) {
+        weeklyData[weekKey] = { scores: [], tests: 0 };
+      }
+      weeklyData[weekKey].scores.push(result.score || 0);
+      weeklyData[weekKey].tests++;
+    });
+
+    // Convert to array and calculate averages
+    return Object.entries(weeklyData)
+      .sort(([a], [b]) => new Date(a) - new Date(b))
+      .slice(-4) // Last 4 weeks
+      .map(([weekStart, data], index) => ({
+        week: `Week ${index + 1}`,
+        score: Math.round(data.scores.reduce((a, b) => a + b, 0) / data.scores.length),
+        tests: data.tests
+      }));
+  };
+
+  // Default analytics for new users
+  const getDefaultAnalytics = () => {
+    const userBranch = userProfile?.branch || 'Computer Science';
+    const defaultSubjects = getDefaultSubjectsForBranch(userBranch);
+    
+    return {
+      overallStats: {
+        totalTests: 0,
+        averageScore: 0,
+        strongAreas: [],
+        weakAreas: [],
+        improvementTrend: 'new_user',
+        timeSpent: 0,
+        questionsAttempted: 0,
+        accuracy: 0
+      },
+      subjectPerformance: defaultSubjects.reduce((acc, subject) => {
+        acc[subject] = { average: 0, scores: [], trend: 'stable' };
+        return acc;
+      }, {}),
+      difficultyAnalysis: {
+        Easy: { attempted: 0, correct: 0, percentage: 0 },
+        Medium: { attempted: 0, correct: 0, percentage: 0 },
+        Hard: { attempted: 0, correct: 0, percentage: 0 }
+      },
+      timeAnalysis: {
+        averageTimePerQuestion: 0,
+        fastestCorrect: 0,
+        slowestCorrect: 0,
+        timeDistribution: { 'Under 60s': 0, '60-120s': 0, 'Over 120s': 0 }
+      },
+      weeklyProgress: [],
+      recentTests: []
+    };
+  };
+
+  // Get default subjects based on branch
+  const getDefaultSubjectsForBranch = (branch) => {
+    const subjectMap = {
+      'Computer Science': ['Data Structures', 'Algorithms', 'Database Systems', 'Operating Systems', 'Computer Networks', 'Web Technologies'],
+      'Electronics': ['Electronics', 'Communication Systems', 'Signal Processing', 'Digital Electronics', 'Microprocessors', 'Control Systems'],
+      'Mechanical': ['Thermodynamics', 'Fluid Mechanics', 'Machine Design', 'Manufacturing', 'Materials Science', 'Heat Transfer'],
+      'Civil': ['Structural Engineering', 'Concrete Technology', 'Geotechnical Engineering', 'Transportation', 'Water Resources', 'Construction Management'],
+      'Electrical': ['Circuit Analysis', 'Power Systems', 'Control Systems', 'Electronics', 'Electrical Machines', 'Power Electronics']
+    };
+    
+    return subjectMap[branch] || subjectMap['Computer Science'];
+  };
+
+  const currentAnalytics = analytics || getDefaultAnalytics();
 
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);

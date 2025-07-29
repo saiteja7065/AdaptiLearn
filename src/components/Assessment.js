@@ -30,6 +30,7 @@ import {
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
+import apiService from '../services/apiService';
 import { 
   getUserSyllabi, 
   generateQuestionsFromSyllabus 
@@ -79,27 +80,61 @@ const Assessment = () => {
       if (assessmentMode === 'syllabus' && selectedSyllabus) {
         setLoading(true);
         try {
-          const result = await generateQuestionsFromSyllabus(selectedSyllabus, {
-            difficulty: 'medium',
-            questionCount: 10
-          });
+          // Use new API service for question generation
+          const questions = await apiService.generateQuestions(
+            selectedSyllabus.subject || 'Computer Science',
+            'medium',
+            10
+          );
           
-          if (result.success) {
-            setQuestions(result.questions);
+          if (questions && questions.length > 0) {
+            setQuestions(questions);
             setError('');
+            
+            // Track activity
+            await apiService.trackActivity('assessment_started', {
+              mode: 'syllabus',
+              subject: selectedSyllabus.subject,
+              questionCount: questions.length
+            });
           } else {
-            setError(result.error || 'Failed to generate questions');
+            setError('Failed to generate questions from syllabus');
             setQuestions(getDefaultQuestions()); // Fallback
           }
         } catch (error) {
           console.error('Error generating questions:', error);
-          setError('Failed to generate questions from syllabus');
+          setError('Failed to generate questions. Using default questions.');
           setQuestions(getDefaultQuestions()); // Fallback
         } finally {
           setLoading(false);
         }
       } else if (assessmentMode === 'adaptive') {
-        setQuestions(getDefaultQuestions());
+        setLoading(true);
+        try {
+          // Generate adaptive questions using API service
+          const questions = await apiService.generateQuestions(
+            'Computer Science Fundamentals',
+            'medium',
+            10
+          );
+          
+          if (questions && questions.length > 0) {
+            setQuestions(questions);
+            
+            // Track activity
+            await apiService.trackActivity('assessment_started', {
+              mode: 'adaptive',
+              questionCount: questions.length
+            });
+          } else {
+            setQuestions(getDefaultQuestions());
+          }
+        } catch (error) {
+          console.error('Error generating adaptive questions:', error);
+          setQuestions(getDefaultQuestions());
+        } finally {
+          setLoading(false);
+        }
       }
     };
 
@@ -204,25 +239,72 @@ const Assessment = () => {
 
   // Define handleSubmitAssessment before useEffect that uses it
   const handleSubmitAssessment = useCallback(async () => {
-    const assessmentResults = calculateResults();
-    setResults(assessmentResults);
-    setIsCompleted(true);
-    setShowResults(true);
-    
-    // Save assessment results
-    await saveAssessmentResult({
-      type: 'baseline_assessment',
-      ...assessmentResults,
-      questions: questions.map(q => ({
-        id: q.id,
-        subject: q.subject,
-        difficulty: q.difficulty,
-        userAnswer: answers[q.id],
-        correctAnswer: q.correctAnswer,
-        isCorrect: answers[q.id] === q.correctAnswer
-      }))
-    });
-  }, [calculateResults, saveAssessmentResult, questions, answers]);
+    try {
+      const assessmentResults = calculateResults();
+      setResults(assessmentResults);
+      setIsCompleted(true);
+      setShowResults(true);
+      
+      // Prepare assessment data for backend
+      const assessmentData = {
+        assessmentId: `assessment_${Date.now()}`,
+        score: assessmentResults.percentage,
+        totalQuestions: questions.length,
+        correctAnswers: assessmentResults.correctAnswers,
+        timeSpent: 1800 - timeLeft, // Time spent in seconds
+        difficulty: 'medium',
+        topics: [...new Set(questions.map(q => q.topic || q.subject))],
+        answers: questions.map(q => ({
+          questionId: q.id,
+          userAnswer: answers[q.id],
+          correctAnswer: q.correctAnswer,
+          isCorrect: answers[q.id] === q.correctAnswer,
+          topic: q.topic || q.subject
+        })),
+        submittedAt: new Date().toISOString(),
+        mode: assessmentMode
+      };
+
+      // Submit to backend analytics service
+      try {
+        const backendResponse = await apiService.submitAssessment(assessmentData);
+        console.log('Assessment submitted to backend:', backendResponse);
+      } catch (backendError) {
+        console.error('Failed to submit to backend:', backendError);
+        // Continue with local storage even if backend fails
+      }
+
+      // Save to local context (existing functionality)
+      await saveAssessmentResult({
+        type: 'baseline_assessment',
+        ...assessmentResults,
+        questions: questions.map(q => ({
+          id: q.id,
+          subject: q.subject,
+          difficulty: q.difficulty,
+          userAnswer: answers[q.id],
+          correctAnswer: q.correctAnswer,
+          isCorrect: answers[q.id] === q.correctAnswer
+        }))
+      });
+
+      // Track completion activity
+      await apiService.trackActivity('assessment_completed', {
+        score: assessmentResults.percentage,
+        timeSpent: 1800 - timeLeft,
+        mode: assessmentMode,
+        totalQuestions: questions.length
+      });
+
+    } catch (error) {
+      console.error('Error submitting assessment:', error);
+      // Fallback to basic results display
+      const assessmentResults = calculateResults();
+      setResults(assessmentResults);
+      setIsCompleted(true);
+      setShowResults(true);
+    }
+  }, [calculateResults, saveAssessmentResult, questions, answers, timeLeft, assessmentMode]);
 
   useEffect(() => {
     if (!user || !userProfile?.setupCompleted) {
@@ -596,7 +678,7 @@ const Assessment = () => {
 
               <FormControl component="fieldset" className="w-full">
                 <RadioGroup
-                  value={answers[currentQ.id] || ''}
+                  value={answers[currentQ.id]?.toString() || ''}
                   onChange={(e) => handleAnswerChange(currentQ.id, e.target.value)}
                 >
                   {currentQ.options.map((option, index) => (
@@ -609,6 +691,10 @@ const Assessment = () => {
                       sx={{
                         '& .MuiRadio-root.Mui-checked': {
                           color: '#667eea',
+                        },
+                        '& .MuiFormControlLabel-label': {
+                          fontSize: '1rem',
+                          fontWeight: '500'
                         }
                       }}
                     />

@@ -30,7 +30,14 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "dev:frontend": "react-scripts start",
+    "dev:ai-service": "cd backend/ai-service && python -m uvicorn main:app --reload --port 8000",
+    "dev:api-gateway": "cd backend/api-gateway && npm run dev",
+    "dev:data-service": "cd backend/data-service && npm run dev",
+    "dev:all": "concurrently \"npm run dev:ai-service\" \"npm run dev:api-gateway\" \"npm run dev:data-service\" \"npm run dev:frontend\"",
+    "install:backend": "cd backend/ai-service && pip install -r requirements.txt && cd ../api-gateway && npm install && cd ../data-service && npm install",
+    "demo": "npm run dev:all"
   },
   "eslintConfig": {
     "extends": [
@@ -52,6 +59,7 @@
   },
   "devDependencies": {
     "@types/react": "^18.2.45",
-    "@types/react-dom": "^18.2.18"
+    "@types/react-dom": "^18.2.18",
+    "concurrently": "^9.2.0"
   }
 }

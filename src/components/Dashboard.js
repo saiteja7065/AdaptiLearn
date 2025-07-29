@@ -33,13 +33,17 @@ import {
   Star,
   GpsFixed,
   BookmarkBorder,
-  Notifications
+  Notifications,
+  CheckCircle,
+  Error,
+  Warning
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Filler } from 'chart.js';
 import { Doughnut, Bar, Line } from 'react-chartjs-2';
 import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
+import apiService from '../services/apiService';
 import FirestoreMonitor from './FirestoreMonitor';
 
 // Register Chart.js components
@@ -52,6 +56,30 @@ const Dashboard = () => {
   
   const [anchorEl, setAnchorEl] = useState(null);
   const [analytics, setAnalytics] = useState(null);
+  const [backendHealth, setBackendHealth] = useState(null);
+  const [healthCheckLoading, setHealthCheckLoading] = useState(true);
+
+  // Check backend health on component mount
+  useEffect(() => {
+    const checkBackendHealth = async () => {
+      try {
+        setHealthCheckLoading(true);
+        const healthStatus = await apiService.checkBackendHealth();
+        setBackendHealth(healthStatus);
+      } catch (error) {
+        console.error('Error checking backend health:', error);
+        setBackendHealth([
+          { service: 'ai', healthy: false },
+          { service: 'data', healthy: false },
+          { service: 'gateway', healthy: false }
+        ]);
+      } finally {
+        setHealthCheckLoading(false);
+      }
+    };
+
+    checkBackendHealth();
+  }, []);
 
   useEffect(() => {
     console.log('📊 Dashboard - User:', user?.uid);
@@ -430,6 +458,56 @@ const Dashboard = () => {
                   </Grid>
                 ))}
               </Grid>
+            </motion.div>
+          </Grid>
+
+          {/* Backend System Status */}
+          <Grid item xs={12}>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.12 }}
+            >
+              <Card className="card-elevated">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Typography variant="h6" className="font-semibold">
+                      🚀 Backend Services Status
+                    </Typography>
+                    {healthCheckLoading && <CircularProgress size={20} />}
+                  </div>
+                  
+                  {backendHealth && (
+                    <div className="flex flex-wrap gap-2">
+                      {backendHealth.map((service) => (
+                        <Chip
+                          key={service.service}
+                          icon={
+                            service.healthy ? 
+                            <CheckCircle className="text-green-500" /> : 
+                            <Error className="text-red-500" />
+                          }
+                          label={`${service.service.toUpperCase()} Service`}
+                          variant={service.healthy ? "filled" : "outlined"}
+                          className={service.healthy ? "bg-green-100 text-green-800" : "border-red-300 text-red-600"}
+                        />
+                      ))}
+                      <Chip
+                        icon={<Warning className="text-orange-500" />}
+                        label="Hackathon Demo Mode"
+                        variant="outlined"
+                        className="border-orange-300 text-orange-600"
+                      />
+                    </div>
+                  )}
+                  
+                  {!healthCheckLoading && backendHealth && (
+                    <Typography variant="caption" className="text-neutral-500 mt-2 block">
+                      Last checked: {new Date().toLocaleTimeString()}
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
             </motion.div>
           </Grid>
 
