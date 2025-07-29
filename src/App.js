@@ -20,6 +20,7 @@ import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
 import Dashboard from './components/Dashboard';
 import ProfileSetup from './components/ProfileSetup';
+import Profile from './components/Profile';
 import Assessment from './components/Assessment';
 import MockTest from './components/MockTest';
 import Analytics from './components/Analytics';
@@ -225,9 +226,17 @@ function App() {
                     } 
                   />
                   <Route 
-                    path="/dashboard" 
+                    path="/profile" 
                     element={
                       <ProtectedRoute>
+                        <Profile />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/dashboard" 
+                    element={
+                      <ProtectedRoute requiresProfile={false}>
                         <Dashboard />
                       </ProtectedRoute>
                     } 

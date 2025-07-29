@@ -288,7 +288,7 @@ const MockTest = () => {
   // Generate questions based on selected mode (adaptive or syllabus-based)
   const generateAdaptiveQuestions = useCallback(async () => {
     try {
-      console.log(`🎯 Generating ${testMode} questions with emergency protection...`);
+      console.log(`Generating ${testMode} questions with emergency protection...`);
       
       if (testMode === 'syllabus' && selectedSyllabus) {
         let syllabusResult;
@@ -531,7 +531,7 @@ const MockTest = () => {
   const handleAnswerChange = useCallback((questionId, answerIndex) => {
     setAnswers(prev => ({
       ...prev,
-      [questionId]: answerIndex
+      [questionId]: parseInt(answerIndex)
     }));
   }, []);
 
@@ -624,7 +624,7 @@ const MockTest = () => {
                   sx={{ p: 2, textAlign: 'left' }}
                 >
                   <Box>
-                    <Typography variant="subtitle1">📚 Syllabus Mode</Typography>
+                    <Typography variant="subtitle1">Syllabus Mode</Typography>
                     <Typography variant="body2" color="text.secondary">
                       {availableSyllabi.length > 0 
                         ? 'Questions from your uploaded syllabus' 
@@ -803,7 +803,7 @@ const MockTest = () => {
               />
               {currentQuestion.source === 'syllabus' && (
                 <Chip 
-                  label="📚 Syllabus" 
+                  label="Syllabus" 
                   color="info" 
                   variant="outlined" 
                   size="small"
@@ -820,12 +820,12 @@ const MockTest = () => {
           <FormControl component="fieldset" sx={{ width: '100%', mt: 3 }}>
             <RadioGroup
               value={answers[currentQuestion.id] || ''}
-              onChange={(e) => handleAnswerChange(currentQuestion.id, parseInt(e.target.value))}
+              onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
             >
               {currentQuestion.options.map((option, index) => (
                 <FormControlLabel
                   key={index}
-                  value={index}
+                  value={index.toString()}
                   control={<Radio />}
                   label={option}
                   sx={{
@@ -905,7 +905,7 @@ const MockTest = () => {
               {adaptiveInsights && (
                 <Box sx={{ mt: 4 }}>
                   <Typography variant="h6" gutterBottom>
-                    🎯 Adaptive Insights:
+                    Adaptive Insights:
                   </Typography>
                   
                   {adaptiveInsights.strongAreas.length > 0 && (
@@ -925,7 +925,7 @@ const MockTest = () => {
                     <Card sx={{ mb: 2, backgroundColor: 'warning.light' }}>
                       <CardContent>
                         <Typography variant="subtitle1" color="warning.dark">
-                          📚 Areas for Improvement:
+                          Areas for Improvement:
                         </Typography>
                         <Typography>
                           {adaptiveInsights.weakAreas.join(', ')}
@@ -937,7 +937,7 @@ const MockTest = () => {
                   <Card sx={{ backgroundColor: 'info.light' }}>
                     <CardContent>
                       <Typography variant="subtitle1" color="info.dark">
-                        🚀 Recommendations:
+                        Recommendations:
                       </Typography>
                       {adaptiveInsights.recommendations.map((rec, index) => (
                         <Typography key={index} sx={{ mt: 1 }}>

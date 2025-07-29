@@ -15,7 +15,7 @@ class FirestoreErrorBoundary extends React.Component {
     if (errorMessage.includes('FIRESTORE') && 
         (errorMessage.includes('INTERNAL ASSERTION FAILED') || 
          errorMessage.includes('Unexpected state'))) {
-      console.log('🔥 Firestore INTERNAL ASSERTION error caught by boundary');
+      console.log('Firestore INTERNAL ASSERTION error caught by boundary');
       
       // Reset Firestore connection immediately
       resetConnection();
@@ -32,7 +32,7 @@ class FirestoreErrorBoundary extends React.Component {
     
     // Handle Firestore errors
     if (handleFirestoreError(error)) {
-      console.error('🔥 Enhanced Firestore Error Boundary caught:', errorMessage);
+      console.error('Enhanced Firestore Error Boundary caught:', errorMessage);
       
       // Increment error count
       const newErrorCount = this.state.errorCount + 1;
@@ -64,7 +64,7 @@ class FirestoreErrorBoundary extends React.Component {
           backgroundColor: '#ffe0e0',
           color: '#d63031'
         }}>
-          <h3>🔥 Database Connection Issue</h3>
+          <h3>Database Connection Issue</h3>
           <p>We're experiencing a temporary connection issue. The app will recover automatically.</p>
           <button 
             onClick={() => this.setState({ hasError: false, error: null })}

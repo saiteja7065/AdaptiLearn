@@ -4,7 +4,7 @@ import { auth, db } from './firebase/config';
 import { connectFirestoreEmulator, enableNetwork, disableNetwork } from 'firebase/firestore';
 
 const testFirebaseConnection = async () => {
-  console.log('🔥 Testing Firebase Connection...');
+  console.log('Testing Firebase Connection...');
   
   // Test Firebase Auth
   if (auth) {
@@ -44,7 +44,7 @@ const testFirebaseConnection = async () => {
     console.error('❌ Firestore failed to initialize');
   }
   
-  console.log('🔥 Firebase connection test complete');
+  console.log('Firebase connection test complete');
 };
 
 // Auto-run test when imported

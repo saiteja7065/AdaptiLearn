@@ -74,14 +74,14 @@ export const handleFirestoreError = (error) => {
   
   if (errorMessage.includes('FIRESTORE') && 
       errorMessage.includes('INTERNAL ASSERTION FAILED')) {
-    console.log('🔥 Firestore INTERNAL ASSERTION FAILED error intercepted');
+    console.log('Firestore INTERNAL ASSERTION FAILED error intercepted');
     resetConnection();
     return true; // Error handled
   }
   
   if (errorMessage.includes('FIRESTORE') || 
       errorMessage.includes('Unexpected state')) {
-    console.log('🔥 Firestore error intercepted:', errorMessage);
+    console.log('Firestore error intercepted:', errorMessage);
     resetConnection();
     return true; // Error handled
   }

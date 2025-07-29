@@ -14,7 +14,9 @@ import {
   MenuItem,
   LinearProgress,
   Chip,
-  Divider
+  Divider,
+  Alert,
+  CircularProgress
 } from '@mui/material';
 import {
   Assessment,
@@ -46,26 +48,25 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarEle
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { userProfile, getPerformanceAnalytics } = useUser();
+  const { userProfile, getPerformanceAnalytics, loading } = useUser();
   
   const [anchorEl, setAnchorEl] = useState(null);
   const [analytics, setAnalytics] = useState(null);
 
   useEffect(() => {
+    console.log('📊 Dashboard - User:', user?.uid);
+    console.log('📊 Dashboard - UserProfile:', userProfile);
+    console.log('📊 Dashboard - Loading:', loading);
+    
     if (!user) {
       navigate('/auth');
-      return;
-    }
-    
-    if (!userProfile?.setupCompleted) {
-      navigate('/profile-setup');
       return;
     }
 
     // Load analytics data
     const analyticsData = getPerformanceAnalytics();
     setAnalytics(analyticsData);
-  }, [user, userProfile, navigate, getPerformanceAnalytics]);
+  }, [user, navigate, getPerformanceAnalytics, userProfile, loading]);
 
   const handleMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
@@ -240,10 +241,27 @@ const Dashboard = () => {
     }
   ];
 
-  if (!user || !userProfile) {
+  if (!user) {
+    console.log('🚫 Dashboard - No user, redirecting to auth');
     return null;
   }
 
+  // Show loading if user data is being fetched
+  if (loading) {
+    console.log('⏳ Dashboard - Loading user data...');
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-primary-50/30 to-secondary-50/30 flex items-center justify-center">
+        <div className="text-center">
+          <CircularProgress size={60} className="mb-4" />
+          <Typography variant="h6" className="text-neutral-600">
+            Loading your dashboard...
+          </Typography>
+        </div>
+      </div>
+    );
+  }
+
+  console.log('✅ Dashboard - Rendering main content');
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-primary-50/30 to-secondary-50/30">
       {/* Header */}
@@ -284,9 +302,9 @@ const Dashboard = () => {
                 onClose={handleMenuClose}
                 className="mt-2"
               >
-                <MenuItem onClick={handleMenuClose}>
+                <MenuItem onClick={() => { handleMenuClose(); navigate('/profile'); }}>
                   <AccountCircle className="mr-2" />
-                  Profile
+                  My Profile
                 </MenuItem>
                 <MenuItem onClick={handleMenuClose}>
                   <Settings className="mr-2" />
@@ -304,6 +322,37 @@ const Dashboard = () => {
       </div>
 
       <Container maxWidth="xl" className="py-8">
+        {/* Profile Completion Alert */}
+        {(!userProfile?.branch || !userProfile?.semester || !userProfile?.selectedSubjects || userProfile?.selectedSubjects?.length === 0) && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="mb-6"
+          >
+            <Alert 
+              severity="info" 
+              action={
+                <Button 
+                  color="inherit" 
+                  size="small" 
+                  onClick={() => navigate('/profile-setup')}
+                  sx={{ fontWeight: 600 }}
+                >
+                  Complete Profile
+                </Button>
+              }
+              sx={{ 
+                borderRadius: 3,
+                background: 'linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)',
+                border: '1px solid #2196F3'
+              }}
+            >
+              Complete your profile to get personalized learning recommendations and access all features!
+            </Alert>
+          </motion.div>
+        )}
+
         {/* Welcome Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -317,24 +366,26 @@ const Dashboard = () => {
                 Welcome back, {user.displayName || 'Student'}! 👋
               </Typography>
               <Typography variant="h6" className="text-neutral-600">
-                {userProfile.branch?.name} • {userProfile.semester?.name}
+                {userProfile?.branch?.name || 'Please complete your profile'} • {userProfile?.semester?.name || 'Setup required'}
               </Typography>
             </div>
             
-            <div className="flex items-center space-x-2 mt-4 md:mt-0">
-              <Chip
-                icon={<School />}
-                label={userProfile.branch?.code}
-                className="gradient-primary text-white"
-                sx={{ background: 'linear-gradient(135deg, #1DB584 0%, #16A085 100%)', color: 'white' }}
-              />
-              <Chip
-                icon={<GpsFixed />}
-                label={`${currentAnalytics.overallStats.averageScore}% Avg`}
-                className="gradient-secondary text-white"
-                sx={{ background: 'linear-gradient(135deg, #6B73C1 0%, #5A67D8 100%)', color: 'white' }}
-              />
-            </div>
+            {userProfile?.branch && (
+              <div className="flex items-center space-x-2 mt-4 md:mt-0">
+                <Chip
+                  icon={<School />}
+                  label={userProfile.branch?.code}
+                  className="gradient-primary text-white"
+                  sx={{ background: 'linear-gradient(135deg, #1DB584 0%, #16A085 100%)', color: 'white' }}
+                />
+                <Chip
+                  icon={<GpsFixed />}
+                  label={`${currentAnalytics.overallStats.averageScore}% Avg`}
+                  className="gradient-secondary text-white"
+                  sx={{ background: 'linear-gradient(135deg, #6B73C1 0%, #5A67D8 100%)', color: 'white' }}
+                />
+              </div>
+            )}
           </div>
         </motion.div>
 

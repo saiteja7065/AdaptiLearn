@@ -252,7 +252,7 @@ const PDFBrowser = () => {
       {/* Header */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h5" gutterBottom>
-          📚 PDF Document Browser
+          PDF Document Browser
         </Typography>
         <Typography variant="body2" color="text.secondary">
           Browse and manage uploaded syllabus documents

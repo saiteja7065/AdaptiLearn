@@ -291,13 +291,31 @@ export const UserProvider = ({ children }) => {
   useEffect(() => {
     const loadUserData = async () => {
       if (isAuthenticated && user?.uid) {
+        console.log('🔄 Loading user data for:', user.uid);
         try {
           setLoading(true);
           
+          // Add a timeout to prevent infinite loading
+          const timeoutId = setTimeout(() => {
+            console.log('⏰ Loading timeout - setting empty profile');
+            setUserProfile({});
+            setLoading(false);
+          }, 5000); // 5 second timeout
+          
           // Load user profile from Firebase
           const profileData = await getUserDocument(user.uid);
+          console.log('📄 Profile data received:', profileData);
+          
+          // Clear timeout since we got a response
+          clearTimeout(timeoutId);
+          
           if (profileData) {
             setUserProfile(profileData);
+            console.log('✅ Profile loaded successfully');
+          } else {
+            // Set empty object for new users without profile
+            setUserProfile({});
+            console.log('📝 New user - empty profile set');
           }
 
           // Load assessment results from Firebase
@@ -308,21 +326,30 @@ export const UserProvider = ({ children }) => {
           const mockTests = await getUserMockTests(user.uid);
           setMockTestResults(mockTests || []);
           
+          console.log('🎯 User data loading completed');
         } catch (error) {
-          console.error('Error loading user data:', error);
+          console.error('❌ Error loading user data:', error);
           // Fallback to localStorage if Firebase fails
           const savedProfile = localStorage.getItem('userProfile');
           if (savedProfile) {
             try {
               setUserProfile(JSON.parse(savedProfile));
+              console.log('💾 Loaded profile from localStorage');
             } catch (parseError) {
               console.error('Error parsing saved profile:', parseError);
+              setUserProfile({});
             }
+          } else {
+            // Set empty object for new users
+            setUserProfile({});
+            console.log('📝 Fallback - empty profile set');
           }
         } finally {
           setLoading(false);
+          console.log('⏰ Loading state set to false');
         }
       } else {
+        console.log('🚫 No authenticated user or user ID');
         // Clear data when not authenticated
         setUserProfile(null);
         setAssessmentResults([]);

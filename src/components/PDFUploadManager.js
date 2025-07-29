@@ -199,7 +199,7 @@ const PDFUploadManager = () => {
       setUploadResults(uploadResults);
       setShowResults(true);
 
-      console.log('📊 Upload Summary:', uploadResults.summary);
+      console.log('Upload Summary:', uploadResults.summary);
 
     } catch (error) {
       console.error('❌ Batch upload failed:', error);
@@ -212,7 +212,7 @@ const PDFUploadManager = () => {
     <Box>
       <Paper sx={{ p: 4, mb: 3 }}>
         <Typography variant="h5" gutterBottom>
-          📚 PDF Syllabus Upload Manager
+          PDF Syllabus Upload Manager
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
           Upload syllabus PDFs organized by academic year, branch, and semester

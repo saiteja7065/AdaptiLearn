@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Container,
   Paper,
@@ -19,7 +19,8 @@ import {
   Card,
   CardContent,
   Grid,
-  CircularProgress
+  CircularProgress,
+  IconButton
 } from '@mui/material';
 import {
   School,
@@ -27,7 +28,8 @@ import {
   Psychology,
   CheckCircle,
   ArrowForward,
-  ArrowBack
+  ArrowBack,
+  Close
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,18 +37,23 @@ import { useUser } from '../contexts/UserContext';
 
 const ProfileSetup = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { 
     branches, 
     subjectsByBranch, 
     semesters, 
     createProfile, 
+    updateProfile,
     loading, 
     userProfile,
     loadSubjectsForBranch,
     loadingBranches,
     loadingSubjects 
   } = useUser();
+
+  // Check if we're in edit mode
+  const isEditMode = location.state?.editMode || false;
   
   const [activeStep, setActiveStep] = useState(0);
   const [profileData, setProfileData] = useState({
@@ -57,6 +64,17 @@ const ProfileSetup = () => {
   const [errors, setErrors] = useState({});
   const [alert, setAlert] = useState({ show: false, message: '', type: 'info' });
   const [availableSubjects, setAvailableSubjects] = useState([]);
+
+  // Initialize profile data if editing
+  useEffect(() => {
+    if (isEditMode && userProfile) {
+      setProfileData({
+        branch: userProfile.branch || '',
+        semester: userProfile.semester || '',
+        selectedSubjects: userProfile.selectedSubjects || []
+      });
+    }
+  }, [isEditMode, userProfile]);
 
   // Load subjects when branch changes
   useEffect(() => {
@@ -190,12 +208,15 @@ const ProfileSetup = () => {
       const selectedBranch = branches.find(b => b.id === profileData.branch);
       const selectedSemester = semesters.find(s => s.id === profileData.semester);
       const selectedSubjects = profileData.selectedSubjects.map(subjectId => 
-        subjectsByBranch[profileData.branch]?.find(s => s.id === subjectId)
+        availableSubjects?.find(s => s.id === subjectId)
       ).filter(Boolean);
 
       const profile = {
-        branch: selectedBranch,
-        semester: selectedSemester,
+        branch: profileData.branch,
+        semester: profileData.semester,
+        selectedSubjects: profileData.selectedSubjects,
+        branchData: selectedBranch,
+        semesterData: selectedSemester,
         subjects: selectedSubjects,
         setupCompleted: true,
         preferences: {
@@ -205,22 +226,27 @@ const ProfileSetup = () => {
         }
       };
 
-      const result = await createProfile(profile);
+      let result;
+      if (isEditMode) {
+        result = await updateProfile(profile);
+      } else {
+        result = await createProfile(profile);
+      }
       
       if (result.success) {
         setAlert({
           show: true,
-          message: 'Profile created successfully! Redirecting to dashboard...',
+          message: `Profile ${isEditMode ? 'updated' : 'created'} successfully! Redirecting to ${isEditMode ? 'profile' : 'dashboard'}...`,
           type: 'success'
         });
         
         setTimeout(() => {
-          navigate('/dashboard');
+          navigate(isEditMode ? '/profile' : '/dashboard');
         }, 2000);
       } else {
         setAlert({
           show: true,
-          message: result.error || 'Failed to create profile. Please try again.',
+          message: result.error || `Failed to ${isEditMode ? 'update' : 'create'} profile. Please try again.`,
           type: 'error'
         });
       }
@@ -373,7 +399,7 @@ const ProfileSetup = () => {
             {/* Real-time indicator */}
             {availableSubjects.length > 0 && (
               <Alert severity="success" sx={{ mb: 2 }}>
-                ✨ Real-time data loaded • {availableSubjects.length} subjects available for {
+                Real-time data loaded • {availableSubjects.length} subjects available for {
                   branches.find(b => b.id === profileData.branch)?.name || 'your branch'
                 }
               </Alert>
@@ -461,7 +487,7 @@ const ProfileSetup = () => {
                                 )}
                                 {subject.popularity && subject.popularity > 80 && (
                                   <Chip 
-                                    label="🔥 Popular" 
+                                    label="Popular" 
                                     size="small"
                                     color="secondary"
                                     variant="outlined"
@@ -540,11 +566,22 @@ const ProfileSetup = () => {
         >
           {/* Header */}
           <div className="text-center mb-8">
+            {isEditMode && (
+              <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                <IconButton onClick={() => navigate('/profile')} size="large">
+                  <ArrowBack />
+                </IconButton>
+                <Box />
+                <IconButton onClick={() => navigate('/profile')} size="large">
+                  <Close />
+                </IconButton>
+              </Box>
+            )}
             <Typography variant="h3" className="font-bold mb-2 text-gradient-primary">
-              Set Up Your Profile
+              {isEditMode ? 'Edit Your Profile' : 'Set Up Your Profile'}
             </Typography>
             <Typography variant="h6" className="text-neutral-600">
-              Let's personalize your learning experience
+              {isEditMode ? 'Update your learning preferences' : "Let's personalize your learning experience"}
             </Typography>
           </div>
 

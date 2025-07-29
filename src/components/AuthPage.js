@@ -120,7 +120,12 @@ const AuthPage = () => {
         });
         
         setTimeout(() => {
-          navigate('/redirect');
+          // For new sign-ups, add a flag to indicate this is a new user
+          if (activeTab === 1) {
+            navigate('/redirect', { state: { isNewUser: true } });
+          } else {
+            navigate('/redirect');
+          }
         }, 1500);
       } else {
         setAlert({
@@ -150,6 +155,8 @@ const AuthPage = () => {
         });
         
         setTimeout(() => {
+          // For Google login, we'll let AuthenticatedRedirect determine if it's a new user
+          // based on whether they have a profile or not
           navigate('/redirect');
         }, 1500);
       } else {

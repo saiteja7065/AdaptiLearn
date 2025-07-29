@@ -184,7 +184,7 @@ class PDFStorageService {
         });
       });
       
-      console.log(`📚 Retrieved ${documents.length} documents for ${branchId}/${academicYear}`);
+      console.log(`Retrieved ${documents.length} documents for ${branchId}/${academicYear}`);
       
       return {
         success: true,

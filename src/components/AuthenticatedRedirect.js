@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
 import { CircularProgress, Box, Typography } from '@mui/material';
 
 const AuthenticatedRedirect = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthenticated, user, loading: authLoading } = useAuth();
   const { userProfile, loading: userLoading } = useUser();
   const [checking, setChecking] = useState(true);
@@ -25,20 +26,22 @@ const AuthenticatedRedirect = () => {
         return;
       }
 
-      // If authenticated, check if profile exists
-      if (!userProfile || !userProfile.branch || !userProfile.semester) {
-        // New user or incomplete profile - redirect to profile setup
-        console.log('👤 New user detected, redirecting to profile setup');
+      // Check if this is a new user (from sign-up)
+      const isNewUser = location.state?.isNewUser;
+
+      if (isNewUser) {
+        // New user from sign-up - always redirect to profile setup
+        console.log('New user from sign-up detected, redirecting to profile setup');
         navigate('/profile-setup');
       } else {
-        // Existing user with complete profile - redirect to dashboard
-        console.log('✅ Existing user with profile, redirecting to dashboard');
+        // Existing user from sign-in - always redirect to dashboard
+        console.log('Existing user sign-in detected, redirecting to dashboard');
         navigate('/dashboard');
       }
     };
 
     handleRedirect();
-  }, [isAuthenticated, user, userProfile, authLoading, userLoading, navigate]);
+  }, [isAuthenticated, user, userProfile, authLoading, userLoading, navigate, location.state]);
 
   // Show loading while checking
   if (authLoading || userLoading || checking) {

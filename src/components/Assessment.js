@@ -255,7 +255,7 @@ const Assessment = () => {
   const handleAnswerChange = (questionId, answerIndex) => {
     setAnswers(prev => ({
       ...prev,
-      [questionId]: answerIndex
+      [questionId]: parseInt(answerIndex)
     }));
   };
 
@@ -597,12 +597,12 @@ const Assessment = () => {
               <FormControl component="fieldset" className="w-full">
                 <RadioGroup
                   value={answers[currentQ.id] || ''}
-                  onChange={(e) => handleAnswerChange(currentQ.id, parseInt(e.target.value))}
+                  onChange={(e) => handleAnswerChange(currentQ.id, e.target.value)}
                 >
                   {currentQ.options.map((option, index) => (
                     <FormControlLabel
                       key={index}
-                      value={index}
+                      value={index.toString()}
                       control={<Radio />}
                       label={option}
                       className="mb-2 p-3 rounded-lg hover:bg-neutral-50 transition-colors"
