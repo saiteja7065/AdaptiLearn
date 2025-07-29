@@ -433,15 +433,31 @@ async def enhance_feedback(
 # Analytics and Dashboard Endpoints
 @app.get("/api/analytics/performance")
 async def get_performance_analytics(
+    branch: str = "CSE",  # Default to CSE, should come from user profile
+    semester: int = 1,
     user: Dict[str, str] = Depends(verify_firebase_token)
 ) -> Dict[str, Any]:
     """Get user performance analytics for dashboard"""
     try:
-        # Generate dynamic performance data
+        # Generate dynamic performance data based on branch
         import random
         
-        # Simulate subject performance based on user activity
-        subjects = ["Data Structures", "Algorithms", "Database Systems", "Operating Systems"]
+        # Define subjects by branch
+        branch_subjects = {
+            "CSE": ["Data Structures", "Algorithms", "Database Systems", "Operating Systems"],
+            "MECH": ["Thermodynamics", "Fluid Mechanics", "Manufacturing Processes", "Machine Design"],
+            "ECE": ["Digital Electronics", "Signal Processing", "Communication Systems", "Microprocessors"],
+            "CIVIL": ["Structural Analysis", "Construction Management", "Surveying", "Environmental Engineering"],
+            "EEE": ["Circuit Analysis", "Power Systems", "Control Systems", "Electrical Machines"],
+            "AUTOMOBILE": ["Vehicle Dynamics", "Engine Technology", "Automotive Electronics", "Vehicle Design"],
+            "AEROSPACE": ["Aerodynamics", "Flight Mechanics", "Propulsion Systems", "Aircraft Structures"],
+            "CHEMICAL": ["Process Engineering", "Reaction Engineering", "Process Control", "Mass Transfer"],
+            "BIOTECH": ["Biochemistry", "Cell Biology", "Bioprocess Engineering", "Molecular Biology"],
+            "IT": ["Software Engineering", "Web Technologies", "Network Security", "Mobile Computing"]
+        }
+        
+        # Get subjects for the branch, default to CSE if branch not found
+        subjects = branch_subjects.get(branch.upper(), branch_subjects["CSE"])
         subject_performance = []
         
         for subject in subjects:
@@ -467,6 +483,8 @@ async def get_performance_analytics(
                 "performance_trend": "improving" if avg_score > 75 else "stable",
                 "weak_areas": [s["subject"] for s in subject_performance if s["score"] < 70],
                 "strong_areas": [s["subject"] for s in subject_performance if s["score"] > 85],
+                "branch": branch,
+                "semester": semester,
                 "last_updated": datetime.now().isoformat()
             }
         }
@@ -477,38 +495,44 @@ async def get_performance_analytics(
 
 @app.get("/api/recommendations")
 async def get_study_recommendations(
+    branch: str = "CSE",
+    semester: int = 1,
     user: Dict[str, str] = Depends(verify_firebase_token)
 ) -> Dict[str, Any]:
     """Get personalized study recommendations"""
     try:
-        # Generate dynamic recommendations based on user performance
-        recommendations = [
-            {
-                "topic": "Database Systems",
-                "reason": "Current score: 65% - Needs improvement",
-                "action": "Practice Now",
-                "priority": "high",
-                "estimated_time": "30 minutes"
-            },
-            {
-                "topic": "Algorithm Optimization",
-                "reason": "Strong foundation - Ready for advanced topics",
-                "action": "Explore Advanced",
-                "priority": "medium", 
-                "estimated_time": "45 minutes"
-            },
-            {
-                "topic": "System Design",
-                "reason": "Trending topic in your field",
-                "action": "Start Learning",
-                "priority": "medium",
-                "estimated_time": "60 minutes"
-            }
-        ]
+        # Generate dynamic recommendations based on branch
+        branch_recommendations = {
+            "CSE": [
+                {"topic": "Database Systems", "reason": "Current score: 65% - Needs improvement", "action": "Practice Now", "priority": "high", "estimated_time": "30 minutes"},
+                {"topic": "Algorithm Optimization", "reason": "Strong foundation - Ready for advanced topics", "action": "Explore Advanced", "priority": "medium", "estimated_time": "45 minutes"},
+                {"topic": "System Design", "reason": "Trending topic in your field", "action": "Start Learning", "priority": "medium", "estimated_time": "60 minutes"}
+            ],
+            "MECH": [
+                {"topic": "Thermodynamics", "reason": "Current score: 62% - Needs improvement", "action": "Practice Now", "priority": "high", "estimated_time": "40 minutes"},
+                {"topic": "Manufacturing Processes", "reason": "Core subject for mechanical engineers", "action": "Review Concepts", "priority": "medium", "estimated_time": "45 minutes"},
+                {"topic": "Machine Design", "reason": "Advanced topic - Good foundation required", "action": "Start Learning", "priority": "medium", "estimated_time": "60 minutes"}
+            ],
+            "ECE": [
+                {"topic": "Digital Electronics", "reason": "Current score: 68% - Needs improvement", "action": "Practice Now", "priority": "high", "estimated_time": "35 minutes"},
+                {"topic": "Signal Processing", "reason": "Core ECE subject", "action": "Review Theory", "priority": "medium", "estimated_time": "50 minutes"},
+                {"topic": "Communication Systems", "reason": "Industry-relevant topic", "action": "Explore Advanced", "priority": "medium", "estimated_time": "55 minutes"}
+            ],
+            "CIVIL": [
+                {"topic": "Structural Analysis", "reason": "Current score: 70% - Room for improvement", "action": "Practice Problems", "priority": "high", "estimated_time": "45 minutes"},
+                {"topic": "Construction Management", "reason": "Practical engineering skills", "action": "Case Studies", "priority": "medium", "estimated_time": "40 minutes"},
+                {"topic": "Environmental Engineering", "reason": "Growing importance in civil engineering", "action": "Start Learning", "priority": "medium", "estimated_time": "50 minutes"}
+            ]
+        }
+        
+        # Get recommendations for the branch, default to CSE if not found
+        recommendations = branch_recommendations.get(branch.upper(), branch_recommendations["CSE"])
         
         return {
             "success": True,
             "recommendations": recommendations,
+            "branch": branch,
+            "semester": semester,
             "generated_at": datetime.now().isoformat()
         }
         

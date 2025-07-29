@@ -109,30 +109,73 @@ const Dashboard = () => {
     navigate('/');
   };
 
-  // Mock data for demonstration
-  const mockAnalytics = {
+  // Get branch-specific performance data from API
+  const [performanceData, setPerformanceData] = useState(null);
+  const [recommendationsData, setRecommendationsData] = useState(null);
+
+  // Fetch analytics data based on user's branch
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      if (userProfile?.branch?.code) {
+        try {
+          // Get performance analytics for user's branch
+          const performanceResponse = await apiService.get(`/api/analytics/performance?branch=${userProfile.branch.code}&semester=${userProfile.semester?.value || 1}`);
+          if (performanceResponse.success) {
+            setPerformanceData(performanceResponse.analytics);
+          }
+
+          // Get recommendations for user's branch  
+          const recommendationsResponse = await apiService.get(`/api/recommendations?branch=${userProfile.branch.code}&semester=${userProfile.semester?.value || 1}`);
+          if (recommendationsResponse.success) {
+            setRecommendationsData(recommendationsResponse.recommendations);
+          }
+        } catch (error) {
+          console.error('Error fetching analytics:', error);
+          // Fall back to default data
+          setPerformanceData({
+            overall_score: 75,
+            total_tests: 5,
+            subject_performance: [
+              { subject: 'Subject 1', score: 85, improvement: 5, tests_taken: 3 },
+              { subject: 'Subject 2', score: 72, improvement: -2, tests_taken: 4 }
+            ],
+            performance_trend: 'stable',
+            weak_areas: ['Subject 2'],
+            strong_areas: ['Subject 1']
+          });
+        }
+      }
+    };
+
+    fetchAnalytics();
+  }, [userProfile?.branch?.code, userProfile?.semester?.value]);
+
+  // Use API data or fallback to default
+  const currentAnalytics = performanceData ? {
+    overallStats: {
+      totalTests: performanceData.total_tests,
+      averageScore: performanceData.overall_score,
+      strongAreas: performanceData.subject_performance.filter(s => s.score > 80).map(s => ({ subject: s.subject, score: s.score })),
+      weakAreas: performanceData.subject_performance.filter(s => s.score < 70).map(s => ({ subject: s.subject, score: s.score })),
+      improvementTrend: performanceData.performance_trend
+    },
+    subjectPerformance: performanceData.subject_performance.reduce((acc, subject) => {
+      acc[subject.subject] = { 
+        average: subject.score, 
+        scores: [subject.score - 5, subject.score - 2, subject.score, subject.score + 2, subject.score] 
+      };
+      return acc;
+    }, {})
+  } : {
     overallStats: {
       totalTests: 5,
-      averageScore: 78,
-      strongAreas: [
-        { subject: 'Data Structures', score: 85 },
-        { subject: 'Algorithms', score: 82 }
-      ],
-      weakAreas: [
-        { subject: 'Database Systems', score: 65 },
-        { subject: 'Operating Systems', score: 58 }
-      ],
-      improvementTrend: 'improving'
+      averageScore: 75,
+      strongAreas: [{ subject: 'Loading...', score: 0 }],
+      weakAreas: [{ subject: 'Loading...', score: 0 }],
+      improvementTrend: 'stable'
     },
-    subjectPerformance: {
-      'Data Structures': { average: 85, scores: [80, 85, 88, 90, 85] },
-      'Algorithms': { average: 82, scores: [75, 80, 85, 88, 82] },
-      'Database Systems': { average: 65, scores: [60, 65, 70, 68, 65] },
-      'Operating Systems': { average: 58, scores: [55, 60, 58, 62, 58] }
-    }
+    subjectPerformance: {}
   };
-
-  const currentAnalytics = analytics || mockAnalytics;
 
   // Chart configurations
   const performanceChartData = {
@@ -686,25 +729,41 @@ const Dashboard = () => {
                   </div>
                   
                   <div className="space-y-4">
-                    {currentAnalytics.overallStats.weakAreas.slice(0, 2).map((area, index) => (
-                      <div key={index} className="p-4 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-xl">
-                        <Typography variant="body1" className="font-medium mb-1">
-                          Focus on {area.subject}
-                        </Typography>
-                        <Typography variant="body2" className="text-neutral-600 mb-3">
-                          Current score: {area.score}% - Needs improvement
-                        </Typography>
-                        <Button
-                          size="small"
-                          variant="contained"
-                          className="btn-primary"
-                          startIcon={<PlayArrow />}
-                          onClick={() => navigate('/mock-test')}
-                        >
-                          Practice Now
-                        </Button>
-                      </div>
-                    ))}
+                    {(recommendationsData || currentAnalytics.overallStats.weakAreas).slice(0, 2).map((item, index) => {
+                      // Handle both API recommendations and fallback weak areas
+                      const recommendation = recommendationsData 
+                        ? item 
+                        : { 
+                            topic: item.subject, 
+                            reason: `Current score: ${item.score}% - Needs improvement`,
+                            action: "Practice Now",
+                            priority: "high",
+                            estimated_time: "30 minutes"
+                          };
+                      
+                      return (
+                        <div key={index} className="p-4 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-xl">
+                          <Typography variant="body1" className="font-medium mb-1">
+                            {recommendation.topic}
+                          </Typography>
+                          <Typography variant="body2" className="text-neutral-600 mb-2">
+                            {recommendation.reason}
+                          </Typography>
+                          <Typography variant="caption" className="text-neutral-500 mb-3 block">
+                            Est. time: {recommendation.estimated_time || "30 minutes"}
+                          </Typography>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            className="btn-primary"
+                            startIcon={<PlayArrow />}
+                            onClick={() => navigate('/mock-test')}
+                          >
+                            {recommendation.action || "Practice Now"}
+                          </Button>
+                        </div>
+                      );
+                    })}
                     
                     <Button
                       fullWidth
