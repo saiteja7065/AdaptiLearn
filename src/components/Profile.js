@@ -123,7 +123,7 @@ const Profile = () => {
                 <Button
                   variant="contained"
                   startIcon={<Edit />}
-                  onClick={handleEditProfile}
+                  onClick={() => navigate('/profile-setup')}
                   sx={{ mt: 3 }}
                   fullWidth
                 >

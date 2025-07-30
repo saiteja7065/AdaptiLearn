@@ -42,6 +42,7 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearSca
 import { Doughnut, Bar, Line, Radar } from 'react-chartjs-2';
 import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
+import analyticsService from '../services/analyticsService';
 
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement, RadialLinearScale, Filler);
@@ -53,6 +54,9 @@ const Analytics = () => {
   
   const [activeTab, setActiveTab] = useState(0);
   const [analytics, setAnalytics] = useState(null);
+  const [detailedAnalytics, setDetailedAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [realTimeData, setRealTimeData] = useState(null);
 
   useEffect(() => {
     if (!user || !userProfile?.setupCompleted) {
@@ -60,10 +64,97 @@ const Analytics = () => {
       return;
     }
 
-    // Generate dynamic analytics based on user data
-    const dynamicAnalytics = generateDynamicAnalytics();
-    setAnalytics(dynamicAnalytics);
+    const loadAnalytics = async () => {
+      setLoading(true);
+      try {
+        // Load enhanced analytics from service
+        const enhanced = await analyticsService.getDetailedAnalytics(user.uid, '30d');
+        setDetailedAnalytics(enhanced);
+
+        // Generate real-time analytics with proper calculations
+        const allResults = [...(assessmentResults || []), ...(mockTestResults || [])];
+        console.log('📊 All Results for Analytics:', allResults);
+        
+        const realTimeAnalytics = {
+          totalTests: allResults.length,
+          averageScore: allResults.length > 0 ? Math.round(allResults.reduce((sum, r) => sum + (r.score || 0), 0) / allResults.length) : 0,
+          recentTests: allResults.slice(-5).map((r, i) => ({
+            id: i + 1,
+            date: r.date || r.timestamp || new Date().toISOString().split('T')[0],
+            score: r.score || 0,
+            type: r.type || 'Test'
+          })),
+          weeklyData: generateWeeklyDataFromResults(allResults),
+          subjectData: generateSubjectDataFromResults(allResults)
+        };
+        
+        console.log('📊 Real Time Analytics:', realTimeAnalytics);
+        setRealTimeData(realTimeAnalytics);
+        
+        const dynamicAnalytics = generateDynamicAnalytics();
+        setAnalytics(dynamicAnalytics);
+      } catch (error) {
+        console.error('Error loading analytics:', error);
+        // Fallback to basic analytics
+        const dynamicAnalytics = generateDynamicAnalytics();
+        setAnalytics(dynamicAnalytics);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAnalytics();
   }, [user, userProfile, navigate, assessmentResults, mockTestResults]);
+
+  // Helper function to generate weekly data from results
+  const generateWeeklyDataFromResults = (results) => {
+    if (results.length === 0) return [];
+    
+    const weeklyMap = {};
+    const now = new Date();
+    
+    results.forEach(result => {
+      const date = new Date(result.date || result.timestamp || now);
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - date.getDay());
+      const weekKey = weekStart.toISOString().split('T')[0];
+      
+      if (!weeklyMap[weekKey]) {
+        weeklyMap[weekKey] = { scores: [], tests: 0 };
+      }
+      weeklyMap[weekKey].scores.push(result.score || 0);
+      weeklyMap[weekKey].tests++;
+    });
+
+    return Object.entries(weeklyMap)
+      .sort(([a], [b]) => new Date(a) - new Date(b))
+      .slice(-4)
+      .map(([weekStart, data], index) => ({
+        week: `Week ${index + 1}`,
+        score: Math.round(data.scores.reduce((a, b) => a + b, 0) / data.scores.length),
+        tests: data.tests
+      }));
+  };
+
+  // Helper function to generate subject data from results
+  const generateSubjectDataFromResults = (results) => {
+    const subjectMap = {};
+    
+    results.forEach(result => {
+      const subject = result.topic || result.subject || result.syllabus || 'General';
+      if (!subjectMap[subject]) {
+        subjectMap[subject] = { scores: [], tests: 0 };
+      }
+      subjectMap[subject].scores.push(result.score || 0);
+      subjectMap[subject].tests++;
+    });
+
+    return Object.entries(subjectMap).map(([subject, data]) => ({
+      subject,
+      average: Math.round(data.scores.reduce((a, b) => a + b, 0) / data.scores.length),
+      tests: data.tests
+    }));
+  };
 
   // Function to generate dynamic analytics from actual user data
   const generateDynamicAnalytics = () => {
@@ -203,7 +294,9 @@ const Analytics = () => {
     
     // Group results by week
     results.forEach(result => {
-      const date = new Date(result.date || result.timestamp);
+      const dateValue = result.date || result.timestamp || new Date().toISOString();
+      const date = new Date(dateValue);
+      if (isNaN(date.getTime())) return;
       const weekStart = new Date(date);
       weekStart.setDate(date.getDate() - date.getDay());
       const weekKey = weekStart.toISOString().split('T')[0];
@@ -281,13 +374,14 @@ const Analytics = () => {
     setActiveTab(newValue);
   };
 
-  // Chart configurations
+  // Chart configurations with real-time data
+  const subjectData = realTimeData?.subjectData || [];
   const overallPerformanceData = {
-    labels: Object.keys(currentAnalytics.subjectPerformance),
+    labels: subjectData.length > 0 ? subjectData.map(s => s.subject) : ['No Data'],
     datasets: [
       {
         label: 'Average Score',
-        data: Object.values(currentAnalytics.subjectPerformance).map(perf => perf.average),
+        data: subjectData.length > 0 ? subjectData.map(s => s.average) : [0],
         backgroundColor: [
           'rgba(29, 181, 132, 0.8)',
           'rgba(107, 115, 193, 0.8)',
@@ -310,12 +404,13 @@ const Analytics = () => {
     ]
   };
 
+  const weeklyData = realTimeData?.weeklyData || [];
   const progressTrendData = {
-    labels: currentAnalytics.weeklyProgress.map(w => w.week),
+    labels: weeklyData.length > 0 ? weeklyData.map(w => w.week) : ['No Data'],
     datasets: [
       {
         label: 'Average Score',
-        data: currentAnalytics.weeklyProgress.map(w => w.score),
+        data: weeklyData.length > 0 ? weeklyData.map(w => w.score) : [0],
         borderColor: '#1DB584',
         backgroundColor: 'rgba(29, 181, 132, 0.1)',
         tension: 0.4,
@@ -327,7 +422,7 @@ const Analytics = () => {
       },
       {
         label: 'Tests Taken',
-        data: currentAnalytics.weeklyProgress.map(w => w.tests * 10), // Scale for visibility
+        data: weeklyData.length > 0 ? weeklyData.map(w => w.tests * 10) : [0], // Scale for visibility
         borderColor: '#6B73C1',
         backgroundColor: 'rgba(107, 115, 193, 0.1)',
         tension: 0.4,
@@ -361,11 +456,11 @@ const Analytics = () => {
   };
 
   const subjectRadarData = {
-    labels: Object.keys(currentAnalytics.subjectPerformance),
+    labels: subjectData.length > 0 ? subjectData.map(s => s.subject) : ['No Data'],
     datasets: [
       {
         label: 'Current Performance',
-        data: Object.values(currentAnalytics.subjectPerformance).map(perf => perf.average),
+        data: subjectData.length > 0 ? subjectData.map(s => s.average) : [0],
         backgroundColor: 'rgba(29, 181, 132, 0.2)',
         borderColor: '#1DB584',
         borderWidth: 2,
@@ -457,6 +552,25 @@ const Analytics = () => {
     return null;
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-accent-50 via-neutral-50 to-primary-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-glow-primary"
+               style={{ background: 'linear-gradient(135deg, #4ECDC4 0%, #14B8A6 100%)' }}>
+            <AnalyticsIcon className="text-white text-2xl animate-pulse" />
+          </div>
+          <Typography variant="h6" className="mb-2">
+            Analyzing Your Performance...
+          </Typography>
+          <Typography variant="body2" className="text-neutral-600">
+            Generating detailed insights and recommendations
+          </Typography>
+        </div>
+      </div>
+    );
+  }
+
   const renderOverviewTab = () => (
     <div className="space-y-6">
       {/* Key Metrics */}
@@ -468,10 +582,10 @@ const Analytics = () => {
                 <AnalyticsIcon className="text-white" />
               </div>
               <Typography variant="h3" className="font-bold text-gradient-primary">
-                {currentAnalytics.overallStats.averageScore}%
+                {realTimeData?.totalTests > 0 ? `${realTimeData.averageScore}%` : '--'}
               </Typography>
               <Typography variant="body2" className="text-neutral-600">
-                Overall Average
+                {realTimeData?.totalTests > 0 ? 'Overall Average' : 'No data yet'}
               </Typography>
             </CardContent>
           </Card>
@@ -484,7 +598,7 @@ const Analytics = () => {
                 <Assessment className="text-white" />
               </div>
               <Typography variant="h3" className="font-bold text-gradient-secondary">
-                {currentAnalytics.overallStats.totalTests}
+                {realTimeData?.totalTests || 0}
               </Typography>
               <Typography variant="body2" className="text-neutral-600">
                 Tests Completed
@@ -500,10 +614,10 @@ const Analytics = () => {
                 <GpsFixed className="text-white" />
               </div>
               <Typography variant="h3" className="font-bold text-gradient-accent">
-                {currentAnalytics.overallStats.accuracy}%
+                {realTimeData?.totalTests > 0 ? `${currentAnalytics.overallStats.accuracy}%` : '--'}
               </Typography>
               <Typography variant="body2" className="text-neutral-600">
-                Accuracy Rate
+                {realTimeData?.totalTests > 0 ? 'Accuracy Rate' : 'No data yet'}
               </Typography>
             </CardContent>
           </Card>
@@ -535,7 +649,16 @@ const Analytics = () => {
                 Subject Performance Overview
               </Typography>
               <div className="h-80">
-                <Bar data={overallPerformanceData} options={chartOptions} />
+                {subjectData.length > 0 ? (
+                  <Bar data={overallPerformanceData} options={chartOptions} />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-neutral-500">
+                    <div className="text-center">
+                      <Typography variant="h6">No test data available</Typography>
+                      <Typography variant="body2">Take some tests to see your performance</Typography>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -583,7 +706,9 @@ const Analytics = () => {
                 </Typography>
               </div>
               <div className="space-y-3">
-                {currentAnalytics.overallStats.strongAreas.map((area, index) => (
+                {(() => {
+                  const strongAreas = subjectData.filter(s => s.average >= 80);
+                  return strongAreas.length > 0 ? strongAreas.map((area, index) => (
                   <motion.div
                     key={index}
                     initial={{ opacity: 0, x: -20 }}
@@ -600,10 +725,15 @@ const Analytics = () => {
                       </Typography>
                     </div>
                     <Typography variant="h6" className="font-bold text-green-600">
-                      {area.score}%
+                      {area.average}%
                     </Typography>
                   </motion.div>
-                ))}
+                  )) : (
+                    <div className="text-center py-8 text-neutral-500">
+                      <Typography variant="body2">Take more tests to identify your strong areas</Typography>
+                    </div>
+                  );
+                })()}
               </div>
             </CardContent>
           </Card>
@@ -619,7 +749,9 @@ const Analytics = () => {
                 </Typography>
               </div>
               <div className="space-y-3">
-                {currentAnalytics.overallStats.weakAreas.map((area, index) => (
+                {(() => {
+                  const weakAreas = subjectData.filter(s => s.average < 70);
+                  return weakAreas.length > 0 ? weakAreas.map((area, index) => (
                   <motion.div
                     key={index}
                     initial={{ opacity: 0, x: 20 }}
@@ -636,10 +768,15 @@ const Analytics = () => {
                       </Typography>
                     </div>
                     <Typography variant="h6" className="font-bold text-red-600">
-                      {area.score}%
+                      {area.average}%
                     </Typography>
                   </motion.div>
-                ))}
+                  )) : (
+                    <div className="text-center py-8 text-neutral-500">
+                      <Typography variant="body2">Take more tests to identify areas for improvement</Typography>
+                    </div>
+                  );
+                })()}
               </div>
             </CardContent>
           </Card>

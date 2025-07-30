@@ -45,14 +45,17 @@ import {
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
+import apiService from '../services/apiService';
 
 const Feedback = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { userProfile, getPerformanceAnalytics } = useUser();
+  const { userProfile, getPerformanceAnalytics, assessmentResults, mockTestResults } = useUser();
   
   const [analytics, setAnalytics] = useState(null);
   const [expandedPanel, setExpandedPanel] = useState('recommendations');
+  const [aiFeedback, setAiFeedback] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user || !userProfile?.setupCompleted) {
@@ -60,12 +63,115 @@ const Feedback = () => {
       return;
     }
 
-    // Load analytics data
-    const analyticsData = getPerformanceAnalytics();
-    setAnalytics(analyticsData);
+    const loadFeedback = async () => {
+      setLoading(true);
+      try {
+        // Load analytics data
+        const analyticsData = getPerformanceAnalytics();
+        setAnalytics(analyticsData);
+
+        // Generate real-time feedback from actual user data
+        const allResults = [...(assessmentResults || []), ...(mockTestResults || [])];
+        const recentResults = allResults.slice(-5);
+        
+        const calculateTrend = (results) => {
+          if (results.length < 2) return 'stable';
+          const recent = results.slice(-2).reduce((a, b) => a + (b.score || 0), 0) / 2;
+          const earlier = results.slice(0, -2).reduce((a, b) => a + (b.score || 0), 0) / Math.max(1, results.length - 2);
+          return recent > earlier + 5 ? 'improving' : recent < earlier - 5 ? 'declining' : 'stable';
+        };
+
+        const identifyStrengths = (results) => {
+          const subjectScores = {};
+          results.forEach(r => {
+            const subject = r.topic || r.subject || 'General';
+            if (!subjectScores[subject]) subjectScores[subject] = [];
+            subjectScores[subject].push(r.score || 0);
+          });
+          return Object.entries(subjectScores)
+            .map(([subject, scores]) => ({ subject, avg: scores.reduce((a, b) => a + b, 0) / scores.length }))
+            .filter(s => s.avg >= 75)
+            .sort((a, b) => b.avg - a.avg)
+            .slice(0, 3)
+            .map(s => s.subject);
+        };
+
+        const identifyWeaknesses = (results) => {
+          const subjectScores = {};
+          results.forEach(r => {
+            const subject = r.topic || r.subject || 'General';
+            if (!subjectScores[subject]) subjectScores[subject] = [];
+            subjectScores[subject].push(r.score || 0);
+          });
+          return Object.entries(subjectScores)
+            .map(([subject, scores]) => ({ subject, avg: scores.reduce((a, b) => a + b, 0) / scores.length }))
+            .filter(s => s.avg < 65)
+            .sort((a, b) => a.avg - b.avg)
+            .slice(0, 3)
+            .map(s => s.subject);
+        };
+
+        const avgScore = allResults.length > 0 ? Math.round(allResults.reduce((sum, r) => sum + (r.score || 0), 0) / allResults.length) : 0;
+        const trend = calculateTrend(recentResults);
+        const strengths = identifyStrengths(allResults);
+        const weaknesses = identifyWeaknesses(allResults);
+
+        const realTimeFeedback = {
+          overall_assessment: avgScore >= 80 ? `Excellent performance! You're ${trend === 'improving' ? 'consistently improving' : 'maintaining high standards'}.` :
+                             avgScore >= 60 ? `Good progress! ${trend === 'improving' ? 'Your scores are trending upward' : 'Focus on consistency'}.` :
+                             `Keep working hard! ${trend === 'improving' ? 'You\'re showing improvement' : 'Practice will lead to better results'}.`,
+          strengths: strengths,
+          areas_for_improvement: weaknesses,
+          personalized_recommendations: weaknesses.map(area => ({
+            action: `Focus on ${area} concepts and practice`,
+            reason: 'Current performance indicates need for improvement',
+            timeline: 'Next 2 weeks',
+            resources: ['Practice questions', 'Study materials', 'Mock tests']
+          })),
+          study_plan: {
+            daily_goals: ['Study weak areas for 30 minutes', 'Take 10 practice questions'],
+            weekly_milestones: [`Improve ${weaknesses[0] || 'focus area'} score`, 'Complete practice tests'],
+            focus_areas: weaknesses.length > 0 ? weaknesses : ['General improvement']
+          },
+          motivation_message: trend === 'improving' ? 'Great progress! Your hard work is paying off.' :
+                             avgScore >= 80 ? 'Outstanding performance! Keep up the excellent work.' :
+                             'Stay focused and keep practicing. Every effort counts towards your success!'
+        };
+
+        setAiFeedback(realTimeFeedback);
+      } catch (error) {
+        console.error('Error loading feedback:', error);
+        // Keep using mock data as fallback
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadFeedback();
   }, [user, userProfile, navigate, getPerformanceAnalytics]);
 
-  // Mock comprehensive feedback data
+  // Use AI feedback if available, otherwise use mock data
+  const feedbackData = aiFeedback || {
+    overall_assessment: 'Good progress with room for improvement in specific areas.',
+    strengths: ['Data Structures', 'Web Technologies', 'Algorithms'],
+    areas_for_improvement: ['Database Systems', 'Operating Systems', 'Computer Networks'],
+    personalized_recommendations: [
+      {
+        action: 'Focus on Database Systems concepts',
+        reason: 'Current score is below target',
+        timeline: '2-3 weeks',
+        resources: ['Practice questions', 'Video tutorials']
+      }
+    ],
+    study_plan: {
+      daily_goals: ['Review one weak topic', 'Practice 10-15 questions'],
+      weekly_milestones: ['Complete topic review', 'Take practice test'],
+      focus_areas: ['Database Systems', 'Operating Systems']
+    },
+    motivation_message: 'Keep up the good work! Focus on your weak areas to improve further.'
+  };
+
+  // Mock comprehensive feedback data for UI display
   const mockFeedback = {
     overallAssessment: {
       score: 76,
@@ -217,6 +323,25 @@ const Feedback = () => {
     return null;
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-neutral-50 to-pink-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-glow-primary"
+               style={{ background: 'linear-gradient(135deg, #FF6B6B 0%, #E53E3E 100%)' }}>
+            <Psychology className="text-white text-2xl animate-pulse" />
+          </div>
+          <Typography variant="h6" className="mb-2">
+            Generating AI-Powered Feedback...
+          </Typography>
+          <Typography variant="body2" className="text-neutral-600">
+            Analyzing your performance and creating personalized recommendations
+          </Typography>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-neutral-50 to-pink-50">
       {/* Header */}
@@ -321,6 +446,90 @@ const Feedback = () => {
               </Grid>
             </CardContent>
           </Card>
+
+          {/* AI-Generated Feedback */}
+          {aiFeedback && (
+            <Card className="card-elevated mb-8">
+              <CardContent className="p-6">
+                <Typography variant="h5" className="font-semibold mb-6 flex items-center">
+                  <Psychology className="mr-2" style={{ color: '#FF6B6B' }} />
+                  AI-Generated Insights
+                </Typography>
+                
+                <Alert severity="info" className="mb-4">
+                  <Typography variant="body1" className="font-medium">
+                    {aiFeedback.overall_assessment}
+                  </Typography>
+                </Alert>
+
+                <Grid container spacing={4}>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="h6" className="font-semibold mb-3 text-green-600">
+                      Your Strengths
+                    </Typography>
+                    <div className="space-y-2">
+                      {aiFeedback.strengths?.map((strength, index) => (
+                        <Chip
+                          key={index}
+                          label={strength}
+                          className="mr-2 mb-2 bg-green-100 text-green-800"
+                          icon={<CheckCircle />}
+                        />
+                      ))}
+                    </div>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="h6" className="font-semibold mb-3 text-orange-600">
+                      Areas for Improvement
+                    </Typography>
+                    <div className="space-y-2">
+                      {aiFeedback.areas_for_improvement?.map((area, index) => (
+                        <Chip
+                          key={index}
+                          label={area}
+                          className="mr-2 mb-2 bg-orange-100 text-orange-800"
+                          icon={<TrendingUp />}
+                        />
+                      ))}
+                    </div>
+                  </Grid>
+                </Grid>
+
+                {aiFeedback.personalized_recommendations && (
+                  <div className="mt-6">
+                    <Typography variant="h6" className="font-semibold mb-3">
+                      AI Recommendations
+                    </Typography>
+                    <div className="space-y-3">
+                      {aiFeedback.personalized_recommendations.map((rec, index) => (
+                        <Card key={index} className="p-4 bg-blue-50">
+                          <Typography variant="body1" className="font-medium mb-2">
+                            {rec.action}
+                          </Typography>
+                          <Typography variant="body2" className="text-neutral-600 mb-2">
+                            {rec.reason}
+                          </Typography>
+                          <div className="flex items-center space-x-2">
+                            <Chip label={rec.timeline} size="small" className="bg-blue-100 text-blue-800" />
+                            {rec.resources?.map((resource, rIndex) => (
+                              <Chip key={rIndex} label={resource} size="small" variant="outlined" />
+                            ))}
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <Alert severity="success" className="mt-4">
+                  <Typography variant="body2">
+                    <strong>Motivation:</strong> {aiFeedback.motivation_message}
+                  </Typography>
+                </Alert>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Motivational Insights */}
           <Card className="card-elevated mb-8">

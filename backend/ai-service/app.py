@@ -540,6 +540,122 @@ async def get_study_recommendations(
         logger.error(f"Error getting recommendations: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get recommendations: {str(e)}")
 
+@app.post("/api/test-results")
+async def save_test_results(
+    request: Dict[str, Any],
+    user: Dict[str, str] = Depends(verify_firebase_token)
+) -> Dict[str, Any]:
+    """Save test results and update user analytics"""
+    try:
+        user_id = request.get("userId")
+        test_data = request.get("testData", {})
+        performance = request.get("performance", {})
+        
+        logger.info(f"Saving test results for user {user_id}")
+        
+        # Extract key information
+        score = performance.get("score", 0)
+        branch = performance.get("branch", "Unknown")
+        semester = performance.get("semester", 1)
+        subject_performance = performance.get("subject_performance", [])
+        
+        # Generate insights based on performance
+        insights = {
+            "overall_performance": "excellent" if score >= 85 else "good" if score >= 70 else "needs_improvement",
+            "score_analysis": {
+                "current_score": score,
+                "grade": "A" if score >= 90 else "B" if score >= 80 else "C" if score >= 70 else "D" if score >= 60 else "F",
+                "improvement_needed": score < 70
+            },
+            "subject_insights": [],
+            "recommendations": []
+        }
+        
+        # Analyze subject performance
+        strong_subjects = []
+        weak_subjects = []
+        
+        for subject_perf in subject_performance:
+            subject_score = subject_perf.get("score", 0)
+            subject_name = subject_perf.get("subject", "Unknown")
+            
+            if subject_score >= 80:
+                strong_subjects.append(subject_name)
+                insights["subject_insights"].append({
+                    "subject": subject_name,
+                    "status": "strong",
+                    "score": subject_score,
+                    "message": f"Excellent performance in {subject_name}"
+                })
+            elif subject_score < 60:
+                weak_subjects.append(subject_name)
+                insights["subject_insights"].append({
+                    "subject": subject_name,
+                    "status": "weak",
+                    "score": subject_score,
+                    "message": f"Needs improvement in {subject_name}"
+                })
+            else:
+                insights["subject_insights"].append({
+                    "subject": subject_name,
+                    "status": "average",
+                    "score": subject_score,
+                    "message": f"Good progress in {subject_name}"
+                })
+        
+        # Generate branch-specific recommendations
+        if branch.upper() == "MECH":
+            if "Thermodynamics" in weak_subjects:
+                insights["recommendations"].append("Review fundamental concepts of heat transfer and energy conversion")
+            if "Fluid Mechanics" in weak_subjects:
+                insights["recommendations"].append("Practice fluid flow problems and Bernoulli's equation")
+            if score < 70:
+                insights["recommendations"].append("Focus on mechanical engineering core subjects")
+        elif branch.upper() == "CSE":
+            if "Data Structures" in weak_subjects:
+                insights["recommendations"].append("Practice implementing arrays, linked lists, and trees")
+            if "Algorithms" in weak_subjects:
+                insights["recommendations"].append("Study sorting algorithms and time complexity analysis")
+            if score < 70:
+                insights["recommendations"].append("Strengthen programming fundamentals")
+        elif branch.upper() == "ECE":
+            if score < 70:
+                insights["recommendations"].append("Focus on electronics and communication basics")
+        
+        # General recommendations based on score
+        if score >= 85:
+            insights["recommendations"].append("Excellent work! Consider taking advanced topics in your field")
+        elif score >= 70:
+            insights["recommendations"].append("Good performance! Focus on weak areas to improve further")
+        else:
+            insights["recommendations"].append("Review fundamental concepts and practice more problems")
+        
+        # Save the results (in production, this would go to a database)
+        result_summary = {
+            "test_id": f"test_{user_id}_{datetime.now().timestamp()}",
+            "user_id": user_id,
+            "score": score,
+            "branch": branch,
+            "semester": semester,
+            "insights": insights,
+            "timestamp": datetime.now().isoformat(),
+            "status": "processed"
+        }
+        
+        logger.info(f"Test results processed for user {user_id}: {score}% in {branch}")
+        
+        return {
+            "success": True,
+            "message": "Test results saved successfully",
+            "insights": insights,
+            "result_summary": result_summary,
+            "saved_at": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving test results: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save test results: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

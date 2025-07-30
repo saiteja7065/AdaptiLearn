@@ -3,17 +3,8 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
-// CRITICAL: Emergency protection must be loaded first
-import './firebase/emergencyProtection';
-
-// EMERGENCY: Activate Firestore Shield immediately
-import { forceOfflineFirestore } from './firebase/firestoreShield';
-
-// Firebase connection test
-import './firebaseTest';
-
-// Initialize Firestore Shield
-import './firebase/firestoreShield';
+// Firebase configuration
+import './firebase/config';
 
 // Components
 import LandingPage from './components/LandingPage';
@@ -29,6 +20,10 @@ import FirebaseTest from './components/FirebaseTest';
 import SyllabusUpload from './components/SyllabusUpload';
 import PDFUploadManager from './components/PDFUploadManager';
 import PDFBrowser from './components/PDFBrowser';
+import AITutor from './components/AITutor';
+import Settings from './components/Settings';
+import SyllabusManagement from './components/SyllabusManagement';
+import SyllabusTest from './components/SyllabusTest';
 import FirestoreErrorBoundary from './components/FirestoreErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import AuthenticatedRedirect from './components/AuthenticatedRedirect';
@@ -37,10 +32,8 @@ import AuthenticatedRedirect from './components/AuthenticatedRedirect';
 import { AuthProvider } from './contexts/AuthContext';
 import { UserProvider } from './contexts/UserContext';
 
-// EMERGENCY SHIELD ACTIVATION
-console.log('🛡️ EMERGENCY: Activating Firestore Shield Protection');
-// Force protection mode due to severe errors
-forceOfflineFirestore();
+// Application initialization
+console.log('🚀 AdaptiLearn Application Starting...');
 
 // Custom Material-UI Theme
 const theme = createTheme({
@@ -189,20 +182,9 @@ const theme = createTheme({
 });
 
 function App() {
-  // Initialize ultimate error protection
+  // Initialize application
   useEffect(() => {
-    console.log('🛡️ AdaptiLearn App starting with Firestore Shield protection');
-    
-    // Additional global error monitoring
-    const handleUnhandledError = (event) => {
-      if (event.error?.message?.includes('FIRESTORE')) {
-        console.log('🚨 App-level Firestore error intercepted');
-        event.preventDefault();
-      }
-    };
-    
-    window.addEventListener('error', handleUnhandledError);
-    return () => window.removeEventListener('error', handleUnhandledError);
+    console.log('✅ AdaptiLearn App initialized successfully');
   }, []);
 
   return (
@@ -302,6 +284,38 @@ function App() {
                     element={
                       <ProtectedRoute>
                         <PDFBrowser />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/ai-tutor" 
+                    element={
+                      <ProtectedRoute>
+                        <AITutor />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/settings" 
+                    element={
+                      <ProtectedRoute>
+                        <Settings />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/syllabus-management" 
+                    element={
+                      <ProtectedRoute>
+                        <SyllabusManagement />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/syllabus-test" 
+                    element={
+                      <ProtectedRoute>
+                        <SyllabusTest />
                       </ProtectedRoute>
                     } 
                   />

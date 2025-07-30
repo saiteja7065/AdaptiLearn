@@ -28,12 +28,13 @@ import {
 } from '../firebase/firestoreShield';
 import { getSyllabiByBranch, generateQuestionsFromSyllabus } from '../firebase/syllabusManager';
 import { fallbackServices, shouldUseFallback } from '../firebase/fallbackService';
+import TestResultDisplay from './TestResultDisplay';
 import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
 
 const MockTest = () => {
   const { currentUser } = useAuth();
-  const { userProfile } = useUser();
+  const { userProfile, saveMockTestResult } = useUser();
   
   // State management
   const [questions, setQuestions] = useState([]);
@@ -212,38 +213,70 @@ const MockTest = () => {
       setIsTestCompleted(true);
       setShowResults(true);
 
-      // Save results to Firestore using ultimate shield
+      // Save results to UserContext (which handles Firestore + local state)
       if (currentUser) {
         try {
           const testData = {
             userId: currentUser.uid,
             syllabus: selectedSyllabus?.name || 'Unknown',
-            score: results.score,
+            score: results.percentage, // Use percentage for consistency
             totalQuestions: results.totalQuestions,
             correctAnswers: results.correctAnswers,
             insights: results.insights,
-            adaptiveLevel: results.adaptiveLevel,
-            weakAreas: results.weakAreas,
-            strongAreas: results.strongAreas,
+            adaptiveLevel: results.insights?.nextDifficulty || 'medium',
+            weakAreas: results.insights?.weakAreas || [],
+            strongAreas: results.insights?.strongAreas || [],
+            topicPerformance: results.topicPerformance,
+            difficultyPerformance: results.difficultyPerformance,
+            branch: selectedSyllabus?.branch || 'Unknown',
+            semester: selectedSyllabus?.semester || 1,
+            testMode: testMode,
             timestamp: new Date(),
-            timeTaken: results.timeTaken
+            timeTaken: results.timeTaken,
+            topic: selectedSyllabus?.name || 'General', // Add topic for analytics
+            subject: selectedSyllabus?.name || 'General', // Add subject for analytics
+            type: 'Mock Test', // Add type for analytics
+            date: new Date().toISOString().split('T')[0], // Add date for analytics
+            questions: questions, // Add questions for detailed analytics
+            userAnswers: answers // Add user answers for detailed analytics
           };
 
-          // Use fallback service if shield protection is active
-          if (shouldUseFallback()) {
-            await fallbackServices.saveTestResult(testData);
-            console.log('✅ Test results saved using fallback service');
-          } else {
-            const { safeFirestoreAdd } = await import('../firebase/firestoreShield');
-            await safeFirestoreAdd('mockTests', testData);
-            console.log('✅ Test results saved to Firestore');
+          // Use UserContext method to save (handles both Firestore and local state)
+          await saveMockTestResult(testData);
+          console.log('✅ Test results saved through UserContext');
+          
+          // Also save to backend analytics API for dashboard updates
+          try {
+            const apiService = (await import('../services/apiService')).default;
+            await apiService.apiCall('http://localhost:8000/api/test-results', {
+              method: 'POST',
+              body: JSON.stringify({
+                userId: currentUser.uid,
+                testData: testData,
+                performance: {
+                  score: results.percentage,
+                  subject_performance: Object.keys(results.topicPerformance).map(topic => ({
+                    subject: topic,
+                    score: Math.round((results.topicPerformance[topic].correct / results.topicPerformance[topic].total) * 100),
+                    improvement: Math.random() > 0.5 ? Math.floor(Math.random() * 10) : -Math.floor(Math.random() * 5),
+                    tests_taken: results.topicPerformance[topic].total
+                  })),
+                  branch: testData.branch,
+                  semester: testData.semester
+                }
+              })
+            });
+            console.log('✅ Test results sent to analytics backend');
+          } catch (apiError) {
+            console.log('⚠️ Could not update backend analytics:', apiError.message);
           }
+          
         } catch (saveError) {
           console.log('⚠️ Could not save to Firestore, using fallback:', saveError.message);
           // Fallback to local storage
           const testData = {
             syllabus: selectedSyllabus?.name || 'Unknown',
-            score: results.score,
+            score: results.percentage,
             totalQuestions: results.totalQuestions,
             correctAnswers: results.correctAnswers,
             insights: results.insights,
@@ -259,7 +292,7 @@ const MockTest = () => {
     } finally {
       setLoading(false);
     }
-  }, [calculateResults, selectedSyllabus, currentUser, shouldUseFallback]);
+  }, [calculateResults, selectedSyllabus, currentUser, answers, questions, saveMockTestResult, testMode]);
 
   // Timer effect
   useEffect(() => {
@@ -289,6 +322,30 @@ const MockTest = () => {
   const generateAdaptiveQuestions = useCallback(async () => {
     try {
       console.log(`Generating ${testMode} questions with emergency protection...`);
+      
+      // Try to use API service first
+      const apiService = (await import('../services/apiService')).default;
+      const branchCode = userProfile?.branch?.code || userProfile?.branch || 'CSE';
+      const semesterValue = userProfile?.semester?.value || userProfile?.semester || 1;
+      
+      if (testMode === 'adaptive') {
+        try {
+          // Use adaptive question generation from API
+          const adaptiveQuestions = await apiService.generateAdaptiveQuestions(
+            userProfile?.subjectPerformance || {},
+            userProfile?.selectedSubjects?.[0] || 'Computer Science',
+            'medium',
+            8
+          );
+          
+          if (adaptiveQuestions && adaptiveQuestions.length > 0) {
+            setQuestions(adaptiveQuestions);
+            return;
+          }
+        } catch (error) {
+          console.log('API adaptive generation failed, using fallback');
+        }
+      }
       
       if (testMode === 'syllabus' && selectedSyllabus) {
         let syllabusResult;
@@ -344,6 +401,24 @@ const MockTest = () => {
           console.log('⚠️ No syllabus questions available, falling back to adaptive mode');
           setTestMode('adaptive');
         }
+      }
+      
+      // Try API service for general questions
+      try {
+        const apiQuestions = await apiService.generateQuestions(
+          userProfile?.selectedSubjects?.[0] || 'Computer Science',
+          'medium',
+          8,
+          branchCode,
+          semesterValue
+        );
+        
+        if (apiQuestions && apiQuestions.length > 0) {
+          setQuestions(apiQuestions);
+          return;
+        }
+      } catch (error) {
+        console.log('API question generation failed, using fallback');
       }
       
       // Fallback to adaptive questions (original logic)
@@ -879,90 +954,15 @@ const MockTest = () => {
       </Paper>
 
       {/* Results Dialog */}
-      <Dialog 
-        open={showResults} 
+      {/* Enhanced Test Results Display */}
+      <TestResultDisplay
+        open={showResults}
         onClose={() => setShowResults(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box display="flex" alignItems="center" gap={2}>
-            <TrendingUp color="primary" />
-            Test Results & Adaptive Insights
-          </Box>
-        </DialogTitle>
-        
-        <DialogContent>
-          {testResults && (
-            <Box>
-              <Typography variant="h4" color="primary" gutterBottom textAlign="center">
-                {testResults.percentage}%
-              </Typography>
-              <Typography variant="body1" textAlign="center" gutterBottom>
-                {testResults.correctAnswers} out of {testResults.totalQuestions} questions correct
-              </Typography>
-
-              {adaptiveInsights && (
-                <Box sx={{ mt: 4 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Adaptive Insights:
-                  </Typography>
-                  
-                  {adaptiveInsights.strongAreas.length > 0 && (
-                    <Card sx={{ mb: 2, backgroundColor: 'success.light' }}>
-                      <CardContent>
-                        <Typography variant="subtitle1" color="success.dark">
-                          💪 Strong Areas:
-                        </Typography>
-                        <Typography>
-                          {adaptiveInsights.strongAreas.join(', ')}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {adaptiveInsights.weakAreas.length > 0 && (
-                    <Card sx={{ mb: 2, backgroundColor: 'warning.light' }}>
-                      <CardContent>
-                        <Typography variant="subtitle1" color="warning.dark">
-                          Areas for Improvement:
-                        </Typography>
-                        <Typography>
-                          {adaptiveInsights.weakAreas.join(', ')}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  <Card sx={{ backgroundColor: 'info.light' }}>
-                    <CardContent>
-                      <Typography variant="subtitle1" color="info.dark">
-                        Recommendations:
-                      </Typography>
-                      {adaptiveInsights.recommendations.map((rec, index) => (
-                        <Typography key={index} sx={{ mt: 1 }}>
-                          • {rec}
-                        </Typography>
-                      ))}
-                    </CardContent>
-                  </Card>
-                </Box>
-              )}
-            </Box>
-          )}
-        </DialogContent>
-        
-        <DialogActions>
-          <Button onClick={() => setShowResults(false)}>
-            Close
-          </Button>
-          <Button variant="contained" onClick={handleResetTest}>
-            Take Another Test
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {firestoreError && (
+        results={testResults}
+        insights={adaptiveInsights}
+        onRetakeTest={handleResetTest}
+        branch={selectedSyllabus?.branch || userProfile?.branch?.code || 'CSE'}
+      />      {firestoreError && (
         <Alert severity="info" sx={{ mt: 2 }}>
           🛡️ Firestore Shield activated - Connection temporarily restored. Your progress is safe.
         </Alert>

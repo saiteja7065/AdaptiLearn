@@ -31,13 +31,13 @@ class QuestionGenerator:
                 )
             else:
                 return await self._generate_fallback_questions(
-                    content, num_questions, difficulty, question_type, subject
+                    content, num_questions, difficulty, question_type, subject, branch, semester
                 )
         except Exception as e:
             logger.error(f"Error in question generation: {str(e)}")
             # Always fallback to rule-based generation on error
             return await self._generate_fallback_questions(
-                content, num_questions, difficulty, question_type, subject
+                content, num_questions, difficulty, question_type, subject, branch, semester
             )
     
     async def _generate_ai_questions(
@@ -75,7 +75,7 @@ class QuestionGenerator:
             logger.error(f"AI generation failed: {str(e)}")
             # Fallback to rule-based generation
             return await self._generate_fallback_questions(
-                content, num_questions, difficulty, question_type, subject
+                content, num_questions, difficulty, question_type, subject, branch, semester
             )
     
     async def _generate_with_gemini(self, prompt: str) -> str:
@@ -101,26 +101,64 @@ class QuestionGenerator:
     ) -> str:
         """Create a detailed prompt for AI question generation"""
         
+        # Define branch-specific context
+        branch_contexts = {
+            "CSE": "Computer Science Engineering focusing on programming, algorithms, data structures, software engineering, and computer systems",
+            "MECH": "Mechanical Engineering focusing on thermodynamics, fluid mechanics, manufacturing processes, machine design, and mechanical systems",
+            "ECE": "Electronics and Communication Engineering focusing on digital electronics, signal processing, communication systems, and microprocessors",
+            "CIVIL": "Civil Engineering focusing on structural analysis, construction management, surveying, and environmental engineering",
+            "EEE": "Electrical and Electronics Engineering focusing on circuit analysis, power systems, control systems, and electrical machines",
+            "AUTOMOBILE": "Automobile Engineering focusing on vehicle dynamics, engine technology, automotive electronics, and vehicle design",
+            "AEROSPACE": "Aerospace Engineering focusing on aerodynamics, flight mechanics, propulsion systems, and aircraft structures",
+            "CHEMICAL": "Chemical Engineering focusing on process engineering, reaction engineering, process control, and mass transfer",
+            "BIOTECH": "Biotechnology focusing on biochemistry, cell biology, bioprocess engineering, and molecular biology",
+            "IT": "Information Technology focusing on software engineering, web technologies, network security, and mobile computing"
+        }
+        
+        branch_context = branch_contexts.get(branch.upper(), f"{branch} Engineering")
+        
+        # Define subject-specific question examples
+        subject_examples = {
+            "Data Structures": "arrays, linked lists, stacks, queues, trees, graphs, hash tables, searching and sorting algorithms",
+            "Algorithms": "time complexity, space complexity, sorting algorithms, graph algorithms, dynamic programming, greedy algorithms",
+            "Thermodynamics": "heat transfer, energy conversion, entropy, enthalpy, thermodynamic cycles, laws of thermodynamics",
+            "Fluid Mechanics": "fluid properties, flow measurement, Bernoulli's equation, flow through pipes, fluid statics",
+            "Digital Electronics": "logic gates, Boolean algebra, combinational circuits, sequential circuits, flip-flops, counters",
+            "Signal Processing": "Fourier transforms, filtering, sampling, digital signal processing, analog-to-digital conversion",
+            "Database Systems": "SQL queries, normalization, relational algebra, ACID properties, indexing, database design",
+            "Operating Systems": "process management, memory management, file systems, scheduling algorithms, deadlocks",
+            "Circuit Analysis": "Ohm's law, Kirchhoff's laws, AC/DC circuits, network theorems, circuit analysis techniques",
+            "Structural Analysis": "stress analysis, beam design, load calculations, structural mechanics, material properties"
+        }
+        
+        subject_keywords = subject_examples.get(subject, f"{subject} concepts and principles")
+        
         prompt = f"""
-Generate {num_questions} high-quality {question_type.upper()} questions based on the following academic content.
+Generate {num_questions} high-quality {question_type.upper()} questions for {branch_context}.
 
-CONTEXT:
+ACADEMIC CONTEXT:
+- Branch: {branch_context}
 - Subject: {subject}
-- Branch: {branch}
-- Semester: {semester}
-- Difficulty Level: {difficulty}
+- Semester: {semester} (Semester {semester} level complexity)
+- Difficulty: {difficulty}
 - Question Type: {question_type}
+- Subject Focus: {subject_keywords}
 
 CONTENT TO ANALYZE:
-{content[:2000]}  # Limit content to prevent token overflow
+{content[:2000] if content.strip() else f"Generate questions based on {subject} topics including: {subject_keywords}"}
 
-REQUIREMENTS:
-1. Generate exactly {num_questions} questions
-2. Each question should be {difficulty} difficulty level
-3. Questions should be directly related to the provided content
-4. For MCQ questions: Include 4 options with 1 correct answer
-5. For short answer questions: Include expected answer keywords
-6. For essay questions: Include grading rubric points
+SPECIFIC REQUIREMENTS:
+1. Questions MUST be directly related to {subject} in {branch} engineering
+2. Use {difficulty} difficulty appropriate for semester {semester} students
+3. Include practical applications and real-world scenarios from {branch} field
+4. For MCQ: 4 options with 1 clearly correct answer and 3 plausible distractors
+5. Focus on understanding concepts, not just memorization
+6. Include branch-specific terminology and applications
+
+QUESTION DIFFICULTY GUIDELINES:
+- Easy: Basic definitions, simple recall, fundamental concepts
+- Medium: Application of concepts, problem-solving, analysis
+- Hard: Complex problem-solving, synthesis, evaluation, design
 
 OUTPUT FORMAT (JSON):
 {{
@@ -130,23 +168,27 @@ OUTPUT FORMAT (JSON):
             "question": "Question text here",
             "type": "{question_type}",
             "difficulty": "{difficulty}",
+            "subject": "{subject}",
+            "branch": "{branch}",
             "options": ["A", "B", "C", "D"],  // For MCQ only
             "correct_answer": 1,  // Index for MCQ, text for others
-            "explanation": "Why this answer is correct",
+            "explanation": "Detailed explanation with {branch} context",
             "keywords": ["key1", "key2"],  // For short answer
-            "topic": "Main topic covered",
+            "topic": "Specific {subject} topic",
             "bloom_level": "remember/understand/apply/analyze/evaluate/create",
-            "estimated_time": 2  // Minutes to answer
+            "estimated_time": 2,  // Minutes to answer
+            "practical_application": "Real-world {branch} application"
         }}
     ]
 }}
 
-QUALITY GUIDELINES:
-- Questions should test understanding, not just memorization
-- Use clear, unambiguous language
-- Avoid trick questions or overly complex wording
-- Ensure all MCQ options are plausible
-- Include variety in question stems and formats
+EXAMPLE QUESTION STYLES for {subject}:
+- Focus on {subject_keywords}
+- Include calculations, diagrams, or code if appropriate
+- Reference industry standards and practices in {branch}
+- Connect theory to practical {branch} applications
+
+Generate questions that a {branch} engineering student would encounter in their {subject} course.
 """
         
         return prompt
@@ -267,9 +309,85 @@ QUALITY GUIDELINES:
         num_questions: int,
         difficulty: str,
         question_type: str,
-        subject: str
+        subject: str,
+        branch: str = "",
+        semester: int = 1
     ) -> List[Dict[str, Any]]:
-        """Generate fallback questions using rule-based approach"""
+        """Generate fallback questions using rule-based approach with branch/subject specificity"""
+        
+        # Enhanced branch and subject-specific question templates
+        branch_subject_questions: Dict[str, Dict[str, List[Dict[str, Any]]]] = {
+            "CSE": {
+                "Data Structures": [
+                    {"q": "Which data structure follows LIFO principle?", "options": ["Stack", "Queue", "Array", "Tree"], "correct": 0},
+                    {"q": "What is the time complexity of searching in a balanced binary search tree?", "options": ["O(log n)", "O(n)", "O(1)", "O(n²)"], "correct": 0},
+                    {"q": "Which operation is NOT supported by a queue?", "options": ["Random access", "Enqueue", "Dequeue", "Front"], "correct": 0},
+                    {"q": "In a linked list, what does the last node point to?", "options": ["NULL", "First node", "Previous node", "Next node"], "correct": 0}
+                ],
+                "Algorithms": [
+                    {"q": "Which sorting algorithm has the best average case time complexity?", "options": ["Merge Sort", "Bubble Sort", "Selection Sort", "Insertion Sort"], "correct": 0},
+                    {"q": "What is the space complexity of the recursive implementation of Fibonacci?", "options": ["O(n)", "O(1)", "O(log n)", "O(n²)"], "correct": 0},
+                    {"q": "Which algorithm is used to find the shortest path in a graph?", "options": ["Dijkstra's Algorithm", "DFS", "BFS", "Kruskal's Algorithm"], "correct": 0}
+                ],
+                "Database Systems": [
+                    {"q": "Which normal form eliminates partial dependencies?", "options": ["2NF", "1NF", "3NF", "BCNF"], "correct": 0},
+                    {"q": "What does ACID stand for in database transactions?", "options": ["Atomicity, Consistency, Isolation, Durability", "Access, Control, Integration, Data", "Accuracy, Completeness, Integrity, Dependability", "Availability, Consistency, Isolation, Distribution"], "correct": 0}
+                ],
+                "Operating Systems": [
+                    {"q": "Which scheduling algorithm can cause starvation?", "options": ["Priority Scheduling", "Round Robin", "FCFS", "SJF"], "correct": 0},
+                    {"q": "What is the main purpose of virtual memory?", "options": ["Extend physical memory", "Increase CPU speed", "Improve disk access", "Enhance security"], "correct": 0}
+                ]
+            },
+            "MECH": {
+                "Thermodynamics": [
+                    {"q": "Which law of thermodynamics states that energy cannot be created or destroyed?", "options": ["First Law", "Zeroth Law", "Second Law", "Third Law"], "correct": 0},
+                    {"q": "What is the efficiency of a Carnot engine operating between 300K and 600K?", "options": ["50%", "25%", "75%", "100%"], "correct": 0},
+                    {"q": "In which process does the temperature remain constant?", "options": ["Isothermal", "Adiabatic", "Isobaric", "Isochoric"], "correct": 0}
+                ],
+                "Fluid Mechanics": [
+                    {"q": "Bernoulli's equation is based on which principle?", "options": ["Conservation of energy", "Conservation of mass", "Conservation of momentum", "Conservation of charge"], "correct": 0},
+                    {"q": "What is the unit of dynamic viscosity?", "options": ["Pa⋅s", "m²/s", "kg/m³", "N/m²"], "correct": 0},
+                    {"q": "Reynolds number determines which flow characteristic?", "options": ["Laminar or turbulent", "Steady or unsteady", "Compressible or incompressible", "Viscous or inviscid"], "correct": 0}
+                ],
+                "Manufacturing Processes": [
+                    {"q": "Which machining process is used to create internal threads?", "options": ["Tapping", "Turning", "Milling", "Drilling"], "correct": 0},
+                    {"q": "What is the primary advantage of CNC machining?", "options": ["High precision and repeatability", "Low cost", "Simple operation", "Manual control"], "correct": 0}
+                ],
+                "Machine Design": [
+                    {"q": "What factor of safety is typically used for static loading in steel?", "options": ["2-3", "1-1.5", "4-5", "6-8"], "correct": 0},
+                    {"q": "Which stress concentration factor applies to sharp corners?", "options": ["High", "Low", "Zero", "Negative"], "correct": 0}
+                ]
+            },
+            "ECE": {
+                "Digital Electronics": [
+                    {"q": "How many input combinations are possible for a 3-input logic gate?", "options": ["8", "6", "4", "16"], "correct": 0},
+                    {"q": "Which gate is known as the universal gate?", "options": ["NAND", "AND", "OR", "XOR"], "correct": 0},
+                    {"q": "What is the output of an XOR gate when both inputs are the same?", "options": ["0", "1", "High impedance", "Undefined"], "correct": 0}
+                ],
+                "Signal Processing": [
+                    {"q": "What is the Nyquist sampling frequency for a signal with maximum frequency of 1 kHz?", "options": ["2 kHz", "1 kHz", "500 Hz", "4 kHz"], "correct": 0},
+                    {"q": "Which transform is used to analyze signals in the frequency domain?", "options": ["Fourier Transform", "Laplace Transform", "Z-Transform", "Wavelet Transform"], "correct": 0}
+                ],
+                "Communication Systems": [
+                    {"q": "What does AM stand for in communication systems?", "options": ["Amplitude Modulation", "Angular Modulation", "Adaptive Modulation", "Automatic Modulation"], "correct": 0},
+                    {"q": "Which modulation technique is most efficient in terms of power?", "options": ["SSB", "AM", "FM", "PM"], "correct": 0}
+                ]
+            },
+            "CIVIL": {
+                "Structural Analysis": [
+                    {"q": "What is the deflection formula for a simply supported beam with point load at center?", "options": ["PL³/48EI", "PL³/3EI", "PL³/12EI", "PL³/24EI"], "correct": 0},
+                    {"q": "Which method is used to analyze indeterminate structures?", "options": ["Moment distribution", "Method of joints", "Method of sections", "Graphical method"], "correct": 0}
+                ],
+                "Construction Management": [
+                    {"q": "What is the critical path in project management?", "options": ["Longest duration path", "Shortest duration path", "Most expensive path", "Most resource-intensive path"], "correct": 0},
+                    {"q": "Which document is used for quality control in construction?", "options": ["Specifications", "Drawings", "BOQ", "Tender"], "correct": 0}
+                ]
+            }
+        }
+        
+        # Get subject-specific questions based on branch and subject
+        branch_questions = branch_subject_questions.get(branch.upper(), {})
+        subject_questions = branch_questions.get(subject, [])
         
         # Extract key terms and concepts from content
         key_terms = self._extract_key_terms(content)
@@ -278,14 +396,40 @@ QUALITY GUIDELINES:
         questions: List[Dict[str, Any]] = []
         
         for i in range(num_questions):
-            if question_type == "mcq":
-                question = self._create_fallback_mcq(i + 1, key_terms, concepts, difficulty, subject)
-            elif question_type == "short_answer":
-                question = self._create_fallback_short_answer(i + 1, key_terms, concepts, difficulty, subject)
-            else:
-                question = self._create_fallback_essay(i + 1, key_terms, concepts, difficulty, subject)
-            
-            questions.append(question)
+            try:
+                # Use predefined questions if available
+                if subject_questions and i < len(subject_questions):
+                    predefined = subject_questions[i]
+                    question: Dict[str, Any] = {
+                        "id": f"predefined_{branch}_{subject}_{i+1}",
+                        "question": predefined["q"],
+                        "type": "mcq",
+                        "difficulty": difficulty,
+                        "subject": subject,
+                        "branch": branch,
+                        "semester": semester,
+                        "options": predefined["options"],
+                        "correct_answer": predefined["correct"],
+                        "explanation": f"This is a fundamental concept in {subject} for {branch} engineering students.",
+                        "topic": subject,
+                        "bloom_level": "understand" if difficulty == "easy" else "apply" if difficulty == "medium" else "analyze",
+                        "estimated_time": 2
+                    }
+                else:
+                    # Generate custom question based on type
+                    if question_type == "mcq":
+                        question = self._create_fallback_mcq(i + 1, key_terms, concepts, difficulty, subject, branch)
+                    elif question_type == "short_answer":
+                        question = self._create_fallback_short_answer(i + 1, key_terms, concepts, difficulty, subject, branch)
+                    else:
+                        question = self._create_fallback_essay(i + 1, key_terms, concepts, difficulty, subject, branch)
+                
+                questions.append(question)
+                
+            except Exception as e:
+                logger.warning(f"Error creating fallback question {i+1}: {str(e)}")
+                # Create a basic question as last resort
+                questions.append(self._create_basic_fallback_question(i+1, subject, branch))
         
         return questions
     
@@ -335,17 +479,43 @@ QUALITY GUIDELINES:
     
     def _create_fallback_mcq(
         self, index: int, key_terms: List[str], concepts: List[str], 
-        difficulty: str, subject: str
+        difficulty: str, subject: str, branch: str = ""
     ) -> Dict[str, Any]:
         """Create a fallback MCQ question"""
         
-        templates = [
-            "What is the primary purpose of {term} in {subject}?",
-            "Which of the following best describes {concept}?",
-            "In {subject}, {term} is primarily used for:",
-            "What is the main advantage of using {term}?",
-            "Which statement about {concept} is correct?"
-        ]
+        # Branch-specific templates
+        if branch.upper() == "CSE":
+            templates = [
+                "What is the time complexity of {term} in {subject}?",
+                "Which data structure is best suited for {concept}?",
+                "In {subject}, {term} is implemented using:",
+                "What is the space complexity of {term}?",
+                "Which algorithm solves the {concept} problem efficiently?"
+            ]
+        elif branch.upper() == "MECH":
+            templates = [
+                "What is the unit of {term} in {subject}?",
+                "Which principle governs {concept} in {subject}?",
+                "In {subject}, {term} is measured using:",
+                "What is the primary application of {term}?",
+                "Which law explains {concept} behavior?"
+            ]
+        elif branch.upper() == "ECE":
+            templates = [
+                "What is the frequency response of {term} in {subject}?",
+                "Which modulation technique uses {concept}?",
+                "In {subject}, {term} operates in which domain:",
+                "What is the bandwidth of {term}?",
+                "Which circuit implements {concept}?"
+            ]
+        else:
+            templates = [
+                "What is the primary purpose of {term} in {subject}?",
+                "Which of the following best describes {concept}?",
+                "In {subject}, {term} is primarily used for:",
+                "What is the main advantage of using {term}?",
+                "Which statement about {concept} is correct?"
+            ]
         
         term = random.choice(key_terms) if key_terms else "the main concept"
         concept = random.choice(concepts) if concepts else "the topic"
@@ -354,45 +524,99 @@ QUALITY GUIDELINES:
         question_text = template.format(term=term, concept=concept, subject=subject)
         
         # Generate plausible options
-        options = self._generate_fallback_options(term, concept, subject)
+        options = self._generate_fallback_options(term, concept, subject, branch)
         
         return {
             "id": f"fallback_q_{index}",
             "question": question_text,
             "type": "mcq",
             "difficulty": difficulty,
+            "subject": subject,
+            "branch": branch,
             "options": options,
             "correct_answer": 0,  # First option is correct
-            "explanation": f"This is the correct definition/application of {term} in {subject}.",
+            "explanation": f"This is the correct definition/application of {term} in {subject} for {branch} students.",
             "topic": concept,
             "bloom_level": "understand",
             "estimated_time": 2
         }
     
-    def _generate_fallback_options(self, term: str, concept: str, subject: str) -> List[str]:
-        """Generate plausible MCQ options"""
-        correct_option = f"A fundamental concept in {subject} related to {concept}"
+    def _generate_fallback_options(self, term: str, concept: str, subject: str, branch: str = "") -> List[str]:
+        """Generate plausible MCQ options based on branch and subject"""
         
-        wrong_options = [
-            "An outdated approach not used in modern {subject}".format(subject=subject),
-            "A theoretical concept with no practical applications",
-            "A concept primarily used in other fields, not {subject}".format(subject=subject)
-        ]
+        # Branch-specific correct answers
+        if branch.upper() == "CSE":
+            correct_option = f"A computational approach in {subject} using {concept}"
+        elif branch.upper() == "MECH":
+            correct_option = f"A mechanical principle in {subject} related to {concept}"
+        elif branch.upper() == "ECE":
+            correct_option = f"An electronic/signal processing concept in {subject} involving {concept}"
+        else:
+            correct_option = f"A fundamental concept in {subject} related to {concept}"
+        
+        # Branch-specific wrong options
+        if branch.upper() == "CSE":
+            wrong_options = [
+                f"A hardware-only solution not related to {subject}",
+                f"A deprecated programming practice in {subject}",
+                "A theoretical concept with no algorithmic applications"
+            ]
+        elif branch.upper() == "MECH":
+            wrong_options = [
+                "A purely theoretical concept with no practical applications",
+                f"A concept used only in electrical engineering, not {subject}",
+                f"An outdated manufacturing technique in {subject}"
+            ]
+        elif branch.upper() == "ECE":
+            wrong_options = [
+                f"A mechanical process not used in {subject}",
+                "A software-only concept with no hardware applications",
+                f"A low-frequency phenomenon irrelevant to {subject}"
+            ]
+        else:
+            wrong_options = [
+                "An outdated approach not used in modern {subject}".format(subject=subject),
+                "A theoretical concept with no practical applications",
+                "A concept primarily used in other fields, not {subject}".format(subject=subject)
+            ]
         
         return [correct_option] + wrong_options
     
     def _create_fallback_short_answer(
         self, index: int, key_terms: List[str], concepts: List[str],
-        difficulty: str, subject: str
+        difficulty: str, subject: str, branch: str = ""
     ) -> Dict[str, Any]:
         """Create a fallback short answer question"""
         
-        templates = [
-            "Explain the concept of {concept} in {subject}.",
-            "Describe how {term} is used in {subject}.",
-            "What are the main characteristics of {concept}?",
-            "List three applications of {term} in {subject}."
-        ]
+        # Branch-specific templates
+        if branch.upper() == "CSE":
+            templates = [
+                "Explain the algorithm for {concept} in {subject}.",
+                "Describe the implementation of {term} in {subject}.",
+                "What are the complexity considerations of {concept}?",
+                "List three applications of {term} in software development."
+            ]
+        elif branch.upper() == "MECH":
+            templates = [
+                "Explain the working principle of {concept} in {subject}.",
+                "Describe how {term} affects system performance in {subject}.",
+                "What are the design considerations for {concept}?",
+                "List three practical applications of {term} in mechanical systems."
+            ]
+        elif branch.upper() == "ECE":
+            templates = [
+                "Explain the frequency response of {concept} in {subject}.",
+                "Describe the signal processing aspects of {term} in {subject}.",
+                "What are the circuit design considerations for {concept}?",
+                "List three applications of {term} in electronic systems."
+            ]
+        else:
+            templates = [
+                "Explain the concept of {concept} in {subject}.",
+                "Describe how {term} is used in {subject}.",
+                "What are the main characteristics of {concept}?",
+                "List three applications of {term} in {subject}."
+            ]
         
         term = random.choice(key_terms) if key_terms else "the main concept"
         concept = random.choice(concepts) if concepts else "the topic"
@@ -405,8 +629,10 @@ QUALITY GUIDELINES:
             "question": question_text,
             "type": "short_answer",
             "difficulty": difficulty,
+            "subject": subject,
+            "branch": branch,
             "keywords": [term, concept, subject.lower()],
-            "expected_answer": f"A comprehensive explanation covering {concept} and its applications in {subject}.",
+            "expected_answer": f"A comprehensive explanation covering {concept} and its applications in {subject} for {branch} engineering.",
             "topic": concept,
             "bloom_level": "understand",
             "estimated_time": 5
@@ -414,16 +640,39 @@ QUALITY GUIDELINES:
     
     def _create_fallback_essay(
         self, index: int, key_terms: List[str], concepts: List[str],
-        difficulty: str, subject: str
+        difficulty: str, subject: str, branch: str = ""
     ) -> Dict[str, Any]:
         """Create a fallback essay question"""
         
-        templates = [
-            "Discuss the importance of {concept} in modern {subject}.",
-            "Analyze the role of {term} in {subject} applications.",
-            "Compare and contrast different approaches to {concept} in {subject}.",
-            "Evaluate the impact of {term} on {subject} development."
-        ]
+        # Branch-specific templates
+        if branch.upper() == "CSE":
+            templates = [
+                "Discuss the algorithmic complexity and optimization of {concept} in {subject}.",
+                "Analyze the scalability and performance implications of {term} in {subject}.",
+                "Compare different data structures for implementing {concept} in {subject}.",
+                "Evaluate the trade-offs between time and space complexity in {term} algorithms."
+            ]
+        elif branch.upper() == "MECH":
+            templates = [
+                "Discuss the thermodynamic principles governing {concept} in {subject}.",
+                "Analyze the material properties affecting {term} performance in {subject}.",
+                "Compare different manufacturing processes for {concept} in {subject}.",
+                "Evaluate the efficiency and sustainability aspects of {term} in mechanical design."
+            ]
+        elif branch.upper() == "ECE":
+            templates = [
+                "Discuss the frequency domain analysis of {concept} in {subject}.",
+                "Analyze the noise and distortion characteristics of {term} in {subject}.",
+                "Compare analog and digital implementations of {concept} in {subject}.",
+                "Evaluate the power consumption and bandwidth requirements of {term}."
+            ]
+        else:
+            templates = [
+                "Discuss the importance of {concept} in modern {subject}.",
+                "Analyze the role of {term} in {subject} applications.",
+                "Compare and contrast different approaches to {concept} in {subject}.",
+                "Evaluate the impact of {term} on {subject} development."
+            ]
         
         term = random.choice(key_terms) if key_terms else "key concepts"
         concept = random.choice(concepts) if concepts else "the main topic"
@@ -436,6 +685,8 @@ QUALITY GUIDELINES:
             "question": question_text,
             "type": "essay",
             "difficulty": difficulty,
+            "subject": subject,
+            "branch": branch,
             "grading_rubric": [
                 f"Clear understanding of {concept}",
                 f"Detailed examples from {subject}",
@@ -445,6 +696,38 @@ QUALITY GUIDELINES:
             "topic": concept,
             "bloom_level": "analyze",
             "estimated_time": 15
+        }
+    
+    def _create_basic_fallback_question(self, index: int, subject: str, branch: str = "") -> Dict[str, Any]:
+        """Create a basic fallback question when all else fails"""
+        
+        # Very basic questions by branch
+        if branch.upper() == "CSE":
+            question_text = f"What is a fundamental concept in {subject} programming?"
+            options = ["Variables and data types", "Color theory", "Chemical reactions", "Mechanical forces"]
+        elif branch.upper() == "MECH":
+            question_text = f"What is a basic principle in {subject}?"
+            options = ["Force and motion", "Binary logic", "Signal processing", "Database normalization"]
+        elif branch.upper() == "ECE":
+            question_text = f"What is a fundamental concept in {subject}?"
+            options = ["Voltage and current", "Object-oriented programming", "Thermodynamics", "Structural analysis"]
+        else:
+            question_text = f"What is an important concept in {subject}?"
+            options = ["Core principles and applications", "Unrelated concepts", "Outdated theories", "Irrelevant information"]
+        
+        return {
+            "id": f"basic_fallback_{index}",
+            "question": question_text,
+            "type": "mcq",
+            "difficulty": "easy",
+            "subject": subject,
+            "branch": branch,
+            "options": options,
+            "correct_answer": 0,
+            "explanation": f"This covers fundamental concepts in {subject} for {branch} students.",
+            "topic": subject,
+            "bloom_level": "remember",
+            "estimated_time": 1
         }
     
     def _create_fallback_question(self, index: int) -> Dict[str, Any]:

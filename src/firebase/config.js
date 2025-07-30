@@ -26,34 +26,45 @@ export const storage = getStorage(app);
 // Export Firestore utilities for connection manager
 export { disableNetwork, enableNetwork };
 
-// Enhanced Firestore connection management to prevent internal assertion failures
+// Enhanced Firestore connection management with error protection
 let firestoreInitialized = false;
+let connectionAttempts = 0;
+const maxConnectionAttempts = 3;
 
 const initializeFirestoreConnection = async () => {
-  if (firestoreInitialized) return;
+  if (firestoreInitialized || connectionAttempts >= maxConnectionAttempts) return;
+  
+  connectionAttempts++;
   
   try {
-    console.log('🔧 Initializing Firestore connection...');
+    console.log(`🔧 Initializing Firestore connection (attempt ${connectionAttempts}/${maxConnectionAttempts})...`);
     
-    // Ensure clean connection state
-    if (process.env.NODE_ENV === 'development') {
-      // Disable and re-enable network to reset connection state
-      await disableNetwork(db);
-      await new Promise(resolve => setTimeout(resolve, 100));
-      await enableNetwork(db);
-    }
+    // Test basic connectivity first
+    const testDoc = doc(db, 'test', 'connection');
+    await getDoc(testDoc);
     
     firestoreInitialized = true;
     console.log('✅ Firestore connection initialized successfully');
     
   } catch (error) {
-    console.log('⚠️ Firestore initialization note:', error);
-    firestoreInitialized = true; // Prevent retry loops
+    console.log(`⚠️ Firestore initialization attempt ${connectionAttempts} failed:`, error.message);
+    
+    if (connectionAttempts >= maxConnectionAttempts) {
+      console.log('🛡️ Max connection attempts reached, enabling offline mode');
+      firestoreInitialized = true; // Prevent further attempts
+    } else {
+      // Retry after delay
+      setTimeout(() => {
+        initializeFirestoreConnection();
+      }, 2000 * connectionAttempts);
+    }
   }
 };
 
-// Initialize connection on module load
-initializeFirestoreConnection();
+// Initialize connection with delay to avoid race conditions
+setTimeout(() => {
+  initializeFirestoreConnection();
+}, 1000);
 
 // Handle visibility changes to prevent connection conflicts
 if (typeof document !== 'undefined') {

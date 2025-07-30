@@ -52,7 +52,8 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarEle
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { userProfile, getPerformanceAnalytics, loading } = useUser();
+  const { userProfile, getPerformanceAnalytics, loading, assessmentResults, mockTestResults } = useUser();
+  const [realTimeData, setRealTimeData] = useState(null);
   
   const [anchorEl, setAnchorEl] = useState(null);
   const [analytics, setAnalytics] = useState(null);
@@ -85,16 +86,171 @@ const Dashboard = () => {
     console.log('📊 Dashboard - User:', user?.uid);
     console.log('📊 Dashboard - UserProfile:', userProfile);
     console.log('📊 Dashboard - Loading:', loading);
+    console.log('📊 Dashboard - Assessment Results:', assessmentResults);
+    console.log('📊 Dashboard - Mock Test Results:', mockTestResults);
     
     if (!user) {
       navigate('/auth');
       return;
     }
 
-    // Load analytics data
-    const analyticsData = getPerformanceAnalytics();
-    setAnalytics(analyticsData);
-  }, [user, navigate, getPerformanceAnalytics, userProfile, loading]);
+    // Generate analytics from UserContext data instead of backend API
+    const generateAnalyticsFromUserData = () => {
+      const allResults = [...(assessmentResults || []), ...(mockTestResults || [])];
+      console.log('📊 Dashboard - All Results:', allResults);
+      
+      // Always update real-time data
+      const totalTests = allResults.length;
+      const totalScore = allResults.reduce((sum, result) => sum + (result.score || 0), 0);
+      const averageScore = totalTests > 0 ? Math.round(totalScore / totalTests) : 0;
+      
+      // Calculate subject performance
+      const subjectPerformance = calculateSubjectPerformance(allResults);
+      
+      // Set real-time data
+      setRealTimeData({
+        totalTests,
+        averageScore,
+        subjectData: subjectPerformance,
+        recentTests: allResults.slice(-5).map((result, index) => ({
+          id: index + 1,
+          name: result.syllabus || result.topic || result.subject || 'Test',
+          score: result.score || 0,
+          date: result.date || result.timestamp || new Date().toISOString().split('T')[0]
+        }))
+      });
+      
+      if (allResults.length === 0) {
+        console.log('📊 Dashboard - No results found, showing default analytics');
+        setAnalytics(getDefaultAnalytics());
+        return;
+      }
+      
+      console.log(`📊 Dashboard - Calculated: ${totalTests} tests, ${averageScore}% average`);
+      
+      setAnalytics({
+        overallStats: {
+          totalTests,
+          averageScore,
+          strongAreas: subjectPerformance.filter(s => s.score > 80),
+          weakAreas: subjectPerformance.filter(s => s.score < 70),
+          improvementTrend: averageScore >= 70 ? 'improving' : 'needs_work'
+        },
+        subjectPerformance: subjectPerformance.reduce((acc, subject) => {
+          acc[subject.subject] = { 
+            average: subject.score, 
+            scores: [subject.score - 5, subject.score - 2, subject.score, subject.score + 2, subject.score],
+            trend: 'stable'
+          };
+          return acc;
+        }, {}),
+        recentTests: allResults.slice(-5).map((result, index) => ({
+          id: index + 1,
+          name: result.syllabus || result.topic || result.subject || 'Test',
+          score: result.score || 0,
+          date: result.date || result.timestamp || new Date().toISOString().split('T')[0]
+        })),
+        weeklyProgress: calculateWeeklyProgress(allResults)
+      });
+    };
+
+    generateAnalyticsFromUserData();
+  }, [user, navigate, userProfile, loading, assessmentResults, mockTestResults]);
+
+  // Helper function to calculate subject performance
+  const calculateSubjectPerformance = (results) => {
+    const subjectMap = {};
+    results.forEach(result => {
+      const subject = result.topic || result.subject || result.syllabus || 'General';
+      if (!subjectMap[subject]) {
+        subjectMap[subject] = { total: 0, count: 0 };
+      }
+      subjectMap[subject].total += result.score || 0;
+      subjectMap[subject].count += 1;
+    });
+
+    return Object.keys(subjectMap).map(subject => ({
+      subject,
+      score: Math.round(subjectMap[subject].total / subjectMap[subject].count),
+      tests: subjectMap[subject].count
+    }));
+  };
+
+  // Helper function to calculate weekly progress
+  const calculateWeeklyProgress = (results) => {
+    const weekMap = {};
+    results.forEach(result => {
+      const date = new Date(result.date || result.timestamp || new Date());
+      const weekKey = `Week ${Math.ceil(date.getDate() / 7)}`;
+      if (!weekMap[weekKey]) {
+        weekMap[weekKey] = { total: 0, count: 0 };
+      }
+      weekMap[weekKey].total += result.score || 0;
+      weekMap[weekKey].count += 1;
+    });
+
+    return Object.keys(weekMap).map(week => ({
+      week,
+      score: Math.round(weekMap[week].total / weekMap[week].count)
+    }));
+  };
+
+  // Default analytics for new users
+  const getDefaultAnalytics = () => ({
+    overallStats: {
+      totalTests: 0,
+      averageScore: 0,
+      strongAreas: [],
+      weakAreas: [],
+      improvementTrend: 'stable'
+    },
+    subjectPerformance: {},
+    recentTests: [],
+    weeklyProgress: []
+  });
+
+  // Check if profile is incomplete - handles both nested objects and simple IDs
+  const isProfileIncomplete = () => {
+    if (!userProfile) return true;
+    
+    // Check branch - can be userProfile.branch (ID) or userProfile.branch.name (object)
+    const hasBranch = userProfile.branch && 
+      (typeof userProfile.branch === 'string' || userProfile.branch.name || userProfile.branch.id);
+    
+    // Check semester - can be userProfile.semester (ID) or userProfile.semester.name (object)
+    const hasSemester = userProfile.semester && 
+      (typeof userProfile.semester === 'string' || typeof userProfile.semester === 'number' || 
+       userProfile.semester.name || userProfile.semester.id);
+    
+    // Check subjects
+    const hasSubjects = userProfile.selectedSubjects && 
+      Array.isArray(userProfile.selectedSubjects) && 
+      userProfile.selectedSubjects.length > 0;
+    
+    return !hasBranch || !hasSemester || !hasSubjects;
+  };
+
+  // Get branch display name - handles both formats
+  const getBranchDisplayName = () => {
+    if (!userProfile?.branch) return 'Please complete your profile';
+    
+    if (typeof userProfile.branch === 'string') {
+      return userProfile.branch; // Return the branch code/ID
+    }
+    
+    return userProfile.branch.name || userProfile.branch.id || 'Unknown branch';
+  };
+
+  // Get semester display name - handles both formats  
+  const getSemesterDisplayName = () => {
+    if (!userProfile?.semester) return 'Setup required';
+    
+    if (typeof userProfile.semester === 'string' || typeof userProfile.semester === 'number') {
+      return `Semester ${userProfile.semester}`;
+    }
+    
+    return userProfile.semester.name || `Semester ${userProfile.semester.id}` || 'Unknown semester';
+  };
 
   const handleMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
@@ -116,74 +272,97 @@ const Dashboard = () => {
   // Fetch analytics data based on user's branch
   useEffect(() => {
     const fetchAnalytics = async () => {
+      // Debug user profile structure
+      console.log('🔍 Dashboard - UserProfile structure:', userProfile);
+      console.log('🔍 Dashboard - Branch:', userProfile?.branch);
+      console.log('🔍 Dashboard - Semester:', userProfile?.semester);
+      
+      // Extract branch code with fallbacks
+      let branchCode = 'CSE'; // Default fallback
       if (userProfile?.branch?.code) {
-        try {
-          // Get performance analytics for user's branch
-          const performanceResponse = await apiService.get(`/api/analytics/performance?branch=${userProfile.branch.code}&semester=${userProfile.semester?.value || 1}`);
-          if (performanceResponse.success) {
-            setPerformanceData(performanceResponse.analytics);
-          }
-
-          // Get recommendations for user's branch  
-          const recommendationsResponse = await apiService.get(`/api/recommendations?branch=${userProfile.branch.code}&semester=${userProfile.semester?.value || 1}`);
-          if (recommendationsResponse.success) {
-            setRecommendationsData(recommendationsResponse.recommendations);
-          }
-        } catch (error) {
-          console.error('Error fetching analytics:', error);
-          // Fall back to default data
-          setPerformanceData({
-            overall_score: 75,
-            total_tests: 5,
-            subject_performance: [
-              { subject: 'Subject 1', score: 85, improvement: 5, tests_taken: 3 },
-              { subject: 'Subject 2', score: 72, improvement: -2, tests_taken: 4 }
-            ],
-            performance_trend: 'stable',
-            weak_areas: ['Subject 2'],
-            strong_areas: ['Subject 1']
-          });
+        branchCode = userProfile.branch.code;
+      } else if (userProfile?.branch?.id) {
+        branchCode = userProfile.branch.id.toUpperCase();
+      } else if (userProfile?.branch) {
+        branchCode = userProfile.branch.toUpperCase();
+      }
+      
+      // Extract semester with fallback
+      let semesterValue = 1; // Default fallback
+      if (userProfile?.semester?.value) {
+        semesterValue = userProfile.semester.value;
+      } else if (userProfile?.semester?.id) {
+        semesterValue = userProfile.semester.id;
+      } else if (typeof userProfile?.semester === 'number') {
+        semesterValue = userProfile.semester;
+      }
+      
+      console.log(`📊 Dashboard - Fetching analytics for branch: ${branchCode}, semester: ${semesterValue}`);
+      
+      try {
+        // Get performance analytics for user's branch
+        const performanceResponse = await apiService.get(`/api/analytics/performance?branch=${branchCode}&semester=${semesterValue}`);
+        console.log('📊 Dashboard - Performance Response:', performanceResponse);
+        if (performanceResponse.success) {
+          setPerformanceData(performanceResponse.analytics);
         }
+
+        // Get recommendations for user's branch  
+        const recommendationsResponse = await apiService.get(`/api/recommendations?branch=${branchCode}&semester=${semesterValue}`);
+        console.log('📊 Dashboard - Recommendations Response:', recommendationsResponse);
+        if (recommendationsResponse.success) {
+          setRecommendationsData(recommendationsResponse.recommendations);
+        }
+      } catch (error) {
+        console.error('Error fetching analytics:', error);
+        // Fall back to default data with proper subjects for the branch
+        const fallbackSubjects = branchCode === 'MECH' ? [
+          { subject: 'Thermodynamics', score: 75, improvement: 5, tests_taken: 3 },
+          { subject: 'Fluid Mechanics', score: 72, improvement: -2, tests_taken: 4 }
+        ] : [
+          { subject: 'Data Structures', score: 85, improvement: 5, tests_taken: 3 },
+          { subject: 'Algorithms', score: 72, improvement: -2, tests_taken: 4 }
+        ];
+        
+        setPerformanceData({
+          overall_score: 75,
+          total_tests: 7,
+          subject_performance: fallbackSubjects,
+          performance_trend: 'stable',
+          weak_areas: fallbackSubjects.filter(s => s.score < 75).map(s => s.subject),
+          strong_areas: fallbackSubjects.filter(s => s.score >= 80).map(s => s.subject),
+          branch: branchCode,
+          semester: semesterValue
+        });
       }
     };
 
-    fetchAnalytics();
-  }, [userProfile?.branch?.code, userProfile?.semester?.value]);
+    // Only fetch if user is authenticated, but don't wait for complete userProfile
+    if (user) {
+      fetchAnalytics();
+    }
+  }, [user, userProfile]);
 
-  // Use API data or fallback to default
-  const currentAnalytics = performanceData ? {
+  // Use local analytics data instead of backend API
+  const currentAnalytics = analytics || {
     overallStats: {
-      totalTests: performanceData.total_tests,
-      averageScore: performanceData.overall_score,
-      strongAreas: performanceData.subject_performance.filter(s => s.score > 80).map(s => ({ subject: s.subject, score: s.score })),
-      weakAreas: performanceData.subject_performance.filter(s => s.score < 70).map(s => ({ subject: s.subject, score: s.score })),
-      improvementTrend: performanceData.performance_trend
-    },
-    subjectPerformance: performanceData.subject_performance.reduce((acc, subject) => {
-      acc[subject.subject] = { 
-        average: subject.score, 
-        scores: [subject.score - 5, subject.score - 2, subject.score, subject.score + 2, subject.score] 
-      };
-      return acc;
-    }, {})
-  } : {
-    overallStats: {
-      totalTests: 5,
-      averageScore: 75,
-      strongAreas: [{ subject: 'Loading...', score: 0 }],
-      weakAreas: [{ subject: 'Loading...', score: 0 }],
+      totalTests: 0,
+      averageScore: 0,
+      strongAreas: [],
+      weakAreas: [],
       improvementTrend: 'stable'
     },
     subjectPerformance: {}
   };
 
-  // Chart configurations
+  // Chart configurations with real-time data
+  const subjectData = realTimeData?.subjectData || [];
   const performanceChartData = {
-    labels: Object.keys(currentAnalytics.subjectPerformance),
+    labels: subjectData.length > 0 ? subjectData.map(s => s.subject) : ['No Data'],
     datasets: [
       {
         label: 'Average Score',
-        data: Object.values(currentAnalytics.subjectPerformance).map(perf => perf.average),
+        data: subjectData.length > 0 ? subjectData.map(s => s.score) : [0],
         backgroundColor: [
           'rgba(29, 181, 132, 0.8)',
           'rgba(107, 115, 193, 0.8)',
@@ -226,11 +405,9 @@ const Dashboard = () => {
     datasets: [
       {
         data: [
-          currentAnalytics.overallStats.strongAreas.length,
-          currentAnalytics.overallStats.weakAreas.length,
-          Object.keys(currentAnalytics.subjectPerformance).length - 
-          currentAnalytics.overallStats.strongAreas.length - 
-          currentAnalytics.overallStats.weakAreas.length
+          subjectData.filter(s => s.score > 80).length,
+          subjectData.filter(s => s.score < 70).length,
+          subjectData.filter(s => s.score >= 70 && s.score <= 80).length
         ],
         backgroundColor: [
           '#1DB584',
@@ -290,11 +467,11 @@ const Dashboard = () => {
       action: () => navigate('/mock-test')
     },
     {
-      title: 'Syllabus Management',
-      description: 'Upload and manage syllabi',
-      icon: <School className="text-2xl" />,
-      color: 'bg-gradient-to-r from-green-400 to-blue-400',
-      action: () => navigate('/syllabus')
+      title: 'AI Tutor',
+      description: 'Get instant help and explanations',
+      icon: <EmojiObjects className="text-2xl" />,
+      color: 'bg-gradient-to-r from-purple-400 to-pink-400',
+      action: () => navigate('/ai-tutor')
     },
     {
       title: 'View Analytics',
@@ -306,9 +483,16 @@ const Dashboard = () => {
     {
       title: 'Get Feedback',
       description: 'Personalized recommendations',
-      icon: <EmojiObjects className="text-2xl" />,
+      icon: <School className="text-2xl" />,
       color: 'bg-gradient-to-r from-orange-400 to-pink-400',
       action: () => navigate('/feedback')
+    },
+    {
+      title: 'Syllabus Management',
+      description: 'Upload PDFs and generate tests',
+      icon: <BookmarkBorder className="text-2xl" />,
+      color: 'bg-gradient-to-r from-indigo-400 to-purple-400',
+      action: () => navigate('/syllabus-management')
     }
   ];
 
@@ -377,7 +561,7 @@ const Dashboard = () => {
                   <AccountCircle className="mr-2" />
                   My Profile
                 </MenuItem>
-                <MenuItem onClick={handleMenuClose}>
+                <MenuItem onClick={() => { handleMenuClose(); navigate('/settings'); }}>
                   <Settings className="mr-2" />
                   Settings
                 </MenuItem>
@@ -393,8 +577,8 @@ const Dashboard = () => {
       </div>
 
       <Container maxWidth="xl" className="py-8">
-        {/* Profile Completion Alert */}
-        {(!userProfile?.branch || !userProfile?.semester || !userProfile?.selectedSubjects || userProfile?.selectedSubjects?.length === 0) && (
+        {/* Profile Completion Alert - Only show if user profile is truly incomplete */}
+        {(!loading && user && isProfileIncomplete()) && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -437,7 +621,7 @@ const Dashboard = () => {
                 Welcome back, {user.displayName || 'Student'}! 👋
               </Typography>
               <Typography variant="h6" className="text-neutral-600">
-                {userProfile?.branch?.name || 'Please complete your profile'} • {userProfile?.semester?.name || 'Setup required'}
+                {getBranchDisplayName()} • {getSemesterDisplayName()}
               </Typography>
             </div>
             
@@ -451,7 +635,7 @@ const Dashboard = () => {
                 />
                 <Chip
                   icon={<GpsFixed />}
-                  label={`${currentAnalytics.overallStats.averageScore}% Avg`}
+                  label={realTimeData?.totalTests > 0 ? `${realTimeData.averageScore}% Avg` : 'No data'}
                   className="gradient-secondary text-white"
                   sx={{ background: 'linear-gradient(135deg, #6B73C1 0%, #5A67D8 100%)', color: 'white' }}
                 />
@@ -474,7 +658,7 @@ const Dashboard = () => {
               
               <Grid container spacing={3}>
                 {quickActions.map((action, index) => (
-                  <Grid item xs={12} sm={6} md={3} key={index}>
+                  <Grid item xs={12} sm={6} md={4} lg={3} key={index}>
                     <motion.div
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
@@ -589,7 +773,16 @@ const Dashboard = () => {
                   </div>
                   
                   <div className="h-80">
-                    <Bar data={performanceChartData} options={chartOptions} />
+                    {subjectData.length > 0 ? (
+                      <Bar data={performanceChartData} options={chartOptions} />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-neutral-500">
+                        <div className="text-center">
+                          <Typography variant="h6">No performance data available</Typography>
+                          <Typography variant="body2">Take some tests to see your subject performance</Typography>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -616,24 +809,30 @@ const Dashboard = () => {
                   
                   <div className="text-center">
                     <Typography variant="h2" className="font-bold text-gradient-primary mb-2">
-                      {currentAnalytics.overallStats.averageScore}%
+                      {realTimeData?.totalTests > 0 ? `${realTimeData.averageScore}%` : '--'}
                     </Typography>
                     <Typography variant="body2" className="text-neutral-600 mb-4">
-                      Based on {currentAnalytics.overallStats.totalTests} tests
+                      {realTimeData?.totalTests > 0 ? `Based on ${realTimeData.totalTests} tests` : 'Take tests to see your score'}
                     </Typography>
                     
-                    <LinearProgress
-                      variant="determinate"
-                      value={currentAnalytics.overallStats.averageScore}
-                      className="h-3 rounded-full"
-                      sx={{
-                        backgroundColor: 'rgba(29, 181, 132, 0.1)',
-                        '& .MuiLinearProgress-bar': {
-                          background: 'linear-gradient(135deg, #1DB584 0%, #16A085 100%)',
-                          borderRadius: '6px'
-                        }
-                      }}
-                    />
+                    {realTimeData?.totalTests > 0 ? (
+                      <LinearProgress
+                        variant="determinate"
+                        value={realTimeData.averageScore}
+                        className="h-3 rounded-full"
+                        sx={{
+                          backgroundColor: 'rgba(29, 181, 132, 0.1)',
+                          '& .MuiLinearProgress-bar': {
+                            background: 'linear-gradient(135deg, #1DB584 0%, #16A085 100%)',
+                            borderRadius: '6px'
+                          }
+                        }}
+                      />
+                    ) : (
+                      <div className="h-3 bg-neutral-200 rounded-full">
+                        <div className="h-full bg-neutral-300 rounded-full" style={{ width: '0%' }}></div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -729,41 +928,39 @@ const Dashboard = () => {
                   </div>
                   
                   <div className="space-y-4">
-                    {(recommendationsData || currentAnalytics.overallStats.weakAreas).slice(0, 2).map((item, index) => {
-                      // Handle both API recommendations and fallback weak areas
-                      const recommendation = recommendationsData 
-                        ? item 
-                        : { 
-                            topic: item.subject, 
-                            reason: `Current score: ${item.score}% - Needs improvement`,
-                            action: "Practice Now",
-                            priority: "high",
-                            estimated_time: "30 minutes"
-                          };
+                    {(() => {
+                      const weakSubjects = subjectData.filter(s => s.score < 70).slice(0, 2);
                       
-                      return (
-                        <div key={index} className="p-4 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-xl">
-                          <Typography variant="body1" className="font-medium mb-1">
-                            {recommendation.topic}
-                          </Typography>
-                          <Typography variant="body2" className="text-neutral-600 mb-2">
-                            {recommendation.reason}
-                          </Typography>
-                          <Typography variant="caption" className="text-neutral-500 mb-3 block">
-                            Est. time: {recommendation.estimated_time || "30 minutes"}
-                          </Typography>
-                          <Button
-                            size="small"
-                            variant="contained"
-                            className="btn-primary"
-                            startIcon={<PlayArrow />}
-                            onClick={() => navigate('/mock-test')}
-                          >
-                            {recommendation.action || "Practice Now"}
-                          </Button>
+                      return weakSubjects.length > 0 ? weakSubjects.map((item, index) => {
+                      
+                        return (
+                          <div key={index} className="p-4 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-xl">
+                            <Typography variant="body1" className="font-medium mb-1">
+                              {item.subject}
+                            </Typography>
+                            <Typography variant="body2" className="text-neutral-600 mb-2">
+                              Current score: {item.score}% - Needs improvement
+                            </Typography>
+                            <Typography variant="caption" className="text-neutral-500 mb-3 block">
+                              Est. time: 30 minutes
+                            </Typography>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              className="btn-primary"
+                              startIcon={<PlayArrow />}
+                              onClick={() => navigate('/mock-test')}
+                            >
+                              Practice Now
+                            </Button>
+                          </div>
+                        );
+                      }) : (
+                        <div className="text-center py-8 text-neutral-500">
+                          <Typography variant="body2">Take some tests to get personalized recommendations</Typography>
                         </div>
                       );
-                    })}
+                    })()}}
                     
                     <Button
                       fullWidth

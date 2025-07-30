@@ -80,11 +80,16 @@ const Assessment = () => {
       if (assessmentMode === 'syllabus' && selectedSyllabus) {
         setLoading(true);
         try {
-          // Use new API service for question generation
+          // Use new API service for question generation with branch context
+          const branchCode = userProfile?.branch?.code || userProfile?.branch || 'CSE';
+          const semesterValue = userProfile?.semester?.value || userProfile?.semester || 1;
+          
           const questions = await apiService.generateQuestions(
             selectedSyllabus.subject || 'Computer Science',
             'medium',
-            10
+            10,
+            branchCode,
+            semesterValue
           );
           
           if (questions && questions.length > 0) {
@@ -111,11 +116,17 @@ const Assessment = () => {
       } else if (assessmentMode === 'adaptive') {
         setLoading(true);
         try {
-          // Generate adaptive questions using API service
+          // Generate adaptive questions using API service with user context
+          const branchCode = userProfile?.branch?.code || userProfile?.branch || 'CSE';
+          const semesterValue = userProfile?.semester?.value || userProfile?.semester || 1;
+          const mainSubject = userProfile?.selectedSubjects?.[0] || 'Computer Science Fundamentals';
+          
           const questions = await apiService.generateQuestions(
-            'Computer Science Fundamentals',
+            mainSubject,
             'medium',
-            10
+            10,
+            branchCode,
+            semesterValue
           );
           
           if (questions && questions.length > 0) {

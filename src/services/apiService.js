@@ -56,61 +56,107 @@ class APIService {
         }
     }
 
+    // Generic GET method for API calls
+    async get(endpoint) {
+        try {
+            // Determine which service URL to use based on endpoint
+            let baseUrl = this.AI_SERVICE_URL;
+            if (endpoint.includes('/api/user/') || endpoint.includes('/api/gateway/')) {
+                baseUrl = this.API_GATEWAY_URL;
+            } else if (endpoint.includes('/api/data/')) {
+                baseUrl = this.DATA_SERVICE_URL;
+            }
+
+            const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
+            return await this.apiCall(url, { method: 'GET' });
+        } catch (error) {
+            console.error('GET request error:', error);
+            throw error;
+        }
+    }
+
     // =============================================
     // AI SERVICE METHODS (Question Generation)
     // =============================================
 
-    async generateQuestions(topic, difficulty = 'medium', count = 5) {
+    async generateQuestions(topic, difficulty = 'medium', count = 5, branch = '', semester = 1) {
         try {
-            const response = await this.apiCall(`${this.AI_SERVICE_URL}/api/generate-questions`, {
+            const response = await this.apiCall(`${this.AI_SERVICE_URL}/api/ai/generate-questions`, {
                 method: 'POST',
                 body: JSON.stringify({
-                    topic,
-                    difficulty,
-                    count,
-                    question_type: 'mcq'
+                    content: `Generate questions for ${topic} in ${branch} engineering`,
+                    num_questions: count,
+                    difficulty: difficulty,
+                    question_type: 'mcq',
+                    subject: topic,
+                    branch: branch,
+                    semester: semester
                 })
             });
 
-            return response.questions || [];
+            if (response.success && response.questions) {
+                return response.questions.map(q => ({
+                    id: q.id,
+                    question: q.question,
+                    options: q.options,
+                    correctAnswer: q.correct_answer,
+                    explanation: q.explanation,
+                    difficulty: q.difficulty,
+                    subject: q.subject || topic,
+                    topic: q.topic || topic
+                }));
+            }
+            
+            return this.getFallbackQuestions(topic, count);
         } catch (error) {
             console.error('Error generating questions:', error);
-            // Fallback to mock questions for demo
             return this.getFallbackQuestions(topic, count);
         }
     }
 
-    async analyzeContent(content, content_type = 'text') {
+    async analyzeContent(content, content_type = 'text', branch = '', semester = 1) {
         try {
-            const response = await this.apiCall(`${this.AI_SERVICE_URL}/api/analyze-content`, {
+            const response = await this.apiCall(`${this.AI_SERVICE_URL}/api/ai/analyze-content`, {
                 method: 'POST',
                 body: JSON.stringify({
                     content,
-                    content_type
+                    content_type,
+                    branch,
+                    semester
                 })
             });
 
-            return response.analysis || {};
+            if (response.success && response.analysis) {
+                return response.analysis;
+            }
+            
+            return { topics: [], difficulty: 'medium', keywords: [] };
         } catch (error) {
             console.error('Error analyzing content:', error);
-            return { topics: [], difficulty: 'medium' };
+            return { topics: [], difficulty: 'medium', keywords: [] };
         }
     }
 
-    async generateFeedback(userAnswers, questions) {
+    async generateFeedback(performanceData, testResults = [], learningGoals = [], weakAreas = []) {
         try {
-            const response = await this.apiCall(`${this.AI_SERVICE_URL}/api/generate-feedback`, {
+            const response = await this.apiCall(`${this.AI_SERVICE_URL}/api/ai/enhance-feedback`, {
                 method: 'POST',
                 body: JSON.stringify({
-                    user_answers: userAnswers,
-                    questions: questions
+                    performance_data: performanceData,
+                    test_results: testResults,
+                    learning_goals: learningGoals,
+                    weak_areas: weakAreas
                 })
             });
 
-            return response.feedback || {};
+            if (response.success && response.enhanced_feedback) {
+                return response.enhanced_feedback;
+            }
+            
+            return this.generateQuickFeedback(performanceData.average_score || 0, 'General');
         } catch (error) {
             console.error('Error generating feedback:', error);
-            return { score: 0, recommendations: [] };
+            return this.generateQuickFeedback(performanceData.average_score || 0, 'General');
         }
     }
 
@@ -176,6 +222,56 @@ class APIService {
         } catch (error) {
             console.error('Error processing syllabus:', error);
             throw error;
+        }
+    }
+
+    async uploadSyllabusPDF(formData) {
+        try {
+            const response = await this.apiCall(`${this.AI_SERVICE_URL}/api/ai/upload-syllabus`, {
+                method: 'POST',
+                body: formData,
+                headers: {} // Let browser set Content-Type for FormData
+            });
+
+            if (response.success) {
+                return {
+                    success: true,
+                    extractedTopics: response.extractedTopics || [],
+                    syllabusId: response.syllabusId
+                };
+            }
+            
+            return { success: false, error: 'Failed to process PDF' };
+        } catch (error) {
+            console.error('Error uploading syllabus PDF:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    async generateSyllabusQuestions(syllabusData) {
+        try {
+            const response = await this.apiCall(`${this.AI_SERVICE_URL}/api/ai/generate-syllabus-questions`, {
+                method: 'POST',
+                body: JSON.stringify(syllabusData)
+            });
+
+            if (response.success && response.questions) {
+                return response.questions.map(q => ({
+                    id: q.id,
+                    question: q.question,
+                    options: q.options,
+                    correctAnswer: q.correct_answer,
+                    explanation: q.explanation,
+                    difficulty: q.difficulty,
+                    topic: q.topic,
+                    subject: syllabusData.subject
+                }));
+            }
+            
+            return this.getFallbackQuestions(syllabusData.subject, syllabusData.count || 10);
+        } catch (error) {
+            console.error('Error generating syllabus questions:', error);
+            return this.getFallbackQuestions(syllabusData.subject, syllabusData.count || 10);
         }
     }
 
@@ -563,6 +659,309 @@ class APIService {
     }
 
     // =============================================
+    // AI TUTORING METHODS
+    // =============================================
+
+    async chatWithTutor(message, context = {}, conversationHistory = []) {
+        try {
+            // Use Gemini API for better responses
+            const response = await this.callGeminiAPI(message, context);
+            if (response) {
+                return response;
+            }
+            
+            return this.generateFallbackTutorResponse(message);
+        } catch (error) {
+            console.error('Error chatting with tutor:', error);
+            return this.generateFallbackTutorResponse(message);
+        }
+    }
+
+    async callGeminiAPI(message, context = {}) {
+        try {
+            const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY || 'demo-key';
+            const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
+            
+            const prompt = `You are an AI tutor for engineering and computer science students. Answer ONLY academic and study-related questions.
+
+Rules:
+1. Only answer questions about: programming, algorithms, data structures, mathematics, physics, engineering subjects, computer science concepts
+2. If question is not academic, respond: "I can only help with academic topics. Please ask about your studies."
+3. Provide clear, educational explanations with examples
+4. Keep responses under 150 words
+
+Student Question: ${message}
+
+Response:`;
+
+            const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ text: prompt }]
+                    }]
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (aiResponse) {
+                    return {
+                        message: aiResponse,
+                        confidence: 0.9,
+                        sources: ['Gemini AI', 'Academic Resources'],
+                        follow_up_questions: [
+                            'Would you like me to explain this in more detail?',
+                            'Do you have any specific questions about this topic?',
+                            'Should I provide some practice problems?'
+                        ]
+                    };
+                }
+            }
+        } catch (error) {
+            console.error('Gemini API error:', error);
+        }
+        return null;
+    }
+
+    generateFallbackTutorResponse(message) {
+        const messageLower = message.toLowerCase();
+        
+        // Algorithm related questions
+        if (messageLower.includes('algorithm') || messageLower.includes('sorting') || messageLower.includes('searching')) {
+            if (messageLower.includes('sorting')) {
+                return {
+                    message: 'Sorting algorithms arrange data in a specific order. Common ones include Bubble Sort (O(n²)), Quick Sort (O(n log n) average), Merge Sort (O(n log n) guaranteed), and Heap Sort. Each has different time complexities and use cases.',
+                    confidence: 0.9,
+                    sources: ['Algorithm Design Manual', 'Computer Science Fundamentals'],
+                    follow_up_questions: [
+                        'Which sorting algorithm would you like to understand in detail?',
+                        'Do you need help with time complexity analysis?',
+                        'Should I explain when to use which sorting algorithm?'
+                    ]
+                };
+            } else if (messageLower.includes('searching')) {
+                return {
+                    message: 'Searching algorithms find specific elements in data structures. Linear search checks each element (O(n)), while binary search works on sorted arrays (O(log n)). Hash tables provide O(1) average search time.',
+                    confidence: 0.9,
+                    sources: ['Algorithm Design Manual', 'Data Structures'],
+                    follow_up_questions: [
+                        'Would you like to learn about binary search implementation?',
+                        'Do you need help with hash table concepts?',
+                        'Should I explain search optimization techniques?'
+                    ]
+                };
+            } else {
+                return {
+                    message: 'Algorithms are step-by-step procedures for solving computational problems. They have time and space complexity measures. Key categories include sorting, searching, graph algorithms, dynamic programming, and greedy algorithms.',
+                    confidence: 0.9,
+                    sources: ['Algorithm Design Manual', 'Computer Science Fundamentals'],
+                    follow_up_questions: [
+                        'Which type of algorithm interests you most?',
+                        'Do you need help with Big O notation?',
+                        'Should I explain algorithm design techniques?'
+                    ]
+                };
+            }
+        }
+        
+        // Data structure related questions
+        else if (messageLower.includes('data structure') || messageLower.includes('array') || messageLower.includes('linked list') || messageLower.includes('tree') || messageLower.includes('graph')) {
+            if (messageLower.includes('array')) {
+                return {
+                    message: 'Arrays store elements in contiguous memory locations with constant-time access O(1) by index. They have fixed size in most languages. Operations: access O(1), search O(n), insertion/deletion O(n) for arbitrary positions.',
+                    confidence: 0.9,
+                    sources: ['Data Structures Textbook', 'Programming Fundamentals'],
+                    follow_up_questions: [
+                        'Do you need help with array operations?',
+                        'Should I explain dynamic arrays vs static arrays?',
+                        'Would you like to see array implementation examples?'
+                    ]
+                };
+            } else if (messageLower.includes('linked list')) {
+                return {
+                    message: 'Linked lists store data in nodes connected by pointers. Unlike arrays, they allow dynamic sizing. Singly linked lists have one pointer per node, doubly linked lists have two. Insertion/deletion at known positions is O(1).',
+                    confidence: 0.9,
+                    sources: ['Data Structures Textbook', 'Programming Fundamentals'],
+                    follow_up_questions: [
+                        'Would you like to understand linked list implementation?',
+                        'Do you need help with linked list vs array comparison?',
+                        'Should I explain different types of linked lists?'
+                    ]
+                };
+            } else if (messageLower.includes('tree')) {
+                return {
+                    message: 'Trees are hierarchical data structures with nodes connected by edges. Binary trees have at most 2 children per node. Binary Search Trees maintain order for efficient searching O(log n). Other types include AVL, Red-Black, and B-trees.',
+                    confidence: 0.9,
+                    sources: ['Data Structures Textbook', 'Tree Algorithms'],
+                    follow_up_questions: [
+                        'Which type of tree would you like to learn about?',
+                        'Do you need help with tree traversal algorithms?',
+                        'Should I explain tree balancing concepts?'
+                    ]
+                };
+            } else {
+                return {
+                    message: 'Data structures organize and store data for efficient access and modification. Common types include arrays, linked lists, stacks, queues, trees, graphs, and hash tables. Each has specific use cases and performance characteristics.',
+                    confidence: 0.9,
+                    sources: ['Data Structures Textbook', 'Programming Fundamentals'],
+                    follow_up_questions: [
+                        'Which data structure would you like to explore?',
+                        'Do you need help choosing the right data structure?',
+                        'Should I explain time complexity comparisons?'
+                    ]
+                };
+            }
+        }
+        
+        // Database related questions
+        else if (messageLower.includes('database') || messageLower.includes('sql') || messageLower.includes('normalization')) {
+            if (messageLower.includes('sql')) {
+                return {
+                    message: 'SQL (Structured Query Language) is used to manage relational databases. Key commands include SELECT (retrieve data), INSERT (add data), UPDATE (modify data), DELETE (remove data). Joins combine data from multiple tables.',
+                    confidence: 0.9,
+                    sources: ['Database Systems', 'SQL Reference'],
+                    follow_up_questions: [
+                        'Do you need help with specific SQL queries?',
+                        'Should I explain different types of JOINs?',
+                        'Would you like to learn about SQL optimization?'
+                    ]
+                };
+            } else if (messageLower.includes('normalization')) {
+                return {
+                    message: 'Database normalization reduces redundancy and improves data integrity. 1NF eliminates repeating groups, 2NF removes partial dependencies, 3NF eliminates transitive dependencies. Higher normal forms exist for specific cases.',
+                    confidence: 0.9,
+                    sources: ['Database Design', 'Relational Theory'],
+                    follow_up_questions: [
+                        'Which normal form would you like to understand better?',
+                        'Do you need help with normalization examples?',
+                        'Should I explain denormalization trade-offs?'
+                    ]
+                };
+            } else {
+                return {
+                    message: 'Databases store and organize data systematically. Relational databases use tables with relationships, while NoSQL databases offer flexible schemas. Key concepts include ACID properties, indexing, and query optimization.',
+                    confidence: 0.9,
+                    sources: ['Database Systems', 'Data Management'],
+                    follow_up_questions: [
+                        'Are you interested in relational or NoSQL databases?',
+                        'Do you need help with database design principles?',
+                        'Should I explain ACID properties?'
+                    ]
+                };
+            }
+        }
+        
+        // Operating Systems questions
+        else if (messageLower.includes('operating system') || messageLower.includes('process') || messageLower.includes('thread') || messageLower.includes('memory')) {
+            if (messageLower.includes('process')) {
+                return {
+                    message: 'A process is a program in execution with its own memory space. Process states include new, ready, running, waiting, and terminated. The OS scheduler manages process execution using algorithms like Round Robin, Priority, or Shortest Job First.',
+                    confidence: 0.9,
+                    sources: ['Operating System Concepts', 'System Programming'],
+                    follow_up_questions: [
+                        'Do you need help with process scheduling algorithms?',
+                        'Should I explain process vs thread differences?',
+                        'Would you like to learn about inter-process communication?'
+                    ]
+                };
+            } else if (messageLower.includes('memory')) {
+                return {
+                    message: 'Memory management handles allocation and deallocation of memory. Virtual memory uses paging/segmentation to provide larger address spaces. Techniques include demand paging, page replacement algorithms (LRU, FIFO), and memory protection.',
+                    confidence: 0.9,
+                    sources: ['Operating System Concepts', 'Memory Management'],
+                    follow_up_questions: [
+                        'Do you need help with virtual memory concepts?',
+                        'Should I explain page replacement algorithms?',
+                        'Would you like to learn about memory allocation strategies?'
+                    ]
+                };
+            } else {
+                return {
+                    message: 'Operating Systems manage computer hardware and provide services to applications. Key functions include process management, memory management, file systems, and I/O handling. Examples include Windows, Linux, and macOS.',
+                    confidence: 0.9,
+                    sources: ['Operating System Concepts', 'System Design'],
+                    follow_up_questions: [
+                        'Which OS concept would you like to explore?',
+                        'Do you need help with system calls?',
+                        'Should I explain OS architecture?'
+                    ]
+                };
+            }
+        }
+        
+        // Engineering subjects
+        else if (messageLower.includes('thermodynamics') || messageLower.includes('heat') || messageLower.includes('energy')) {
+            return {
+                message: 'Thermodynamics studies heat, work, and energy transfer. The First Law states energy is conserved (ΔU = Q - W). The Second Law introduces entropy and irreversibility. Applications include heat engines, refrigerators, and power cycles.',
+                confidence: 0.9,
+                sources: ['Thermodynamics Textbook', 'Engineering Fundamentals'],
+                follow_up_questions: [
+                    'Do you need help with thermodynamic laws?',
+                    'Should I explain heat engine cycles?',
+                    'Would you like to learn about entropy calculations?'
+                ]
+            };
+        }
+        
+        // Handle common academic abbreviations and terms
+        else if (messageLower.includes('cse') || messageLower.includes('computer science engineering')) {
+            return {
+                message: 'CSE stands for Computer Science Engineering. It\'s a branch of engineering that combines computer science principles with engineering practices. CSE covers programming, algorithms, data structures, software engineering, computer networks, databases, and system design.',
+                confidence: 0.95,
+                sources: ['Engineering Curriculum', 'Academic Standards'],
+                follow_up_questions: [
+                    'Would you like to know about CSE subjects and curriculum?',
+                    'Do you need information about CSE career opportunities?',
+                    'Should I explain the difference between CS and CSE?'
+                ]
+            };
+        }
+        else if (messageLower.includes('ece') || messageLower.includes('electronics')) {
+            return {
+                message: 'ECE stands for Electronics and Communication Engineering. It deals with electronic devices, circuits, communication systems, signal processing, and electromagnetic theory. Key areas include analog/digital electronics, microprocessors, and wireless communication.',
+                confidence: 0.95,
+                sources: ['Engineering Curriculum', 'Electronics Fundamentals'],
+                follow_up_questions: [
+                    'Would you like to learn about ECE core subjects?',
+                    'Do you need help with electronics concepts?',
+                    'Should I explain communication systems basics?'
+                ]
+            };
+        }
+        else if (messageLower.includes('mechanical') || messageLower.includes('mech')) {
+            return {
+                message: 'Mechanical Engineering deals with design, manufacturing, and maintenance of mechanical systems. Core subjects include thermodynamics, fluid mechanics, machine design, manufacturing processes, and materials science.',
+                confidence: 0.95,
+                sources: ['Mechanical Engineering Fundamentals', 'Engineering Curriculum'],
+                follow_up_questions: [
+                    'Which mechanical engineering subject interests you?',
+                    'Do you need help with thermodynamics concepts?',
+                    'Should I explain manufacturing processes?'
+                ]
+            };
+        }
+        // Default response for non-academic queries
+        else {
+            return {
+                message: `I'm an academic tutor focused on helping with engineering and computer science studies. For "${message}", I'd be happy to help if it's related to your coursework. Please ask me about subjects like algorithms, data structures, programming, mathematics, physics, or engineering topics.`,
+                confidence: 0.6,
+                sources: ['Academic Tutor Guidelines'],
+                follow_up_questions: [
+                    'What subject would you like help with?',
+                    'Do you have any programming questions?',
+                    'Would you like help with engineering concepts?'
+                ]
+            };
+        }
+    }
+
+    // =============================================
     // UTILITY METHODS
     // =============================================
 
@@ -614,6 +1013,70 @@ class APIService {
                 level: 'needs_improvement'
             };
         }
+    }
+
+    async generateAdaptiveQuestions(userPerformance, subject, difficulty = 'medium', count = 10) {
+        try {
+            // Analyze user's weak areas
+            const weakAreas = this.identifyWeakAreas(userPerformance);
+            const strongAreas = this.identifyStrongAreas(userPerformance);
+            
+            // Generate questions with 60% focus on weak areas, 40% mixed
+            const weakAreaQuestions = Math.ceil(count * 0.6);
+            const mixedQuestions = count - weakAreaQuestions;
+            
+            const questions = [];
+            
+            // Generate questions for weak areas
+            for (let i = 0; i < weakAreaQuestions && i < weakAreas.length; i++) {
+                const areaQuestions = await this.generateQuestions(
+                    weakAreas[i], 
+                    this.adjustDifficulty(difficulty, userPerformance[weakAreas[i]] || 0),
+                    Math.ceil(weakAreaQuestions / weakAreas.length)
+                );
+                questions.push(...areaQuestions);
+            }
+            
+            // Generate mixed questions
+            const mixedTopics = [...weakAreas, ...strongAreas].slice(0, 3);
+            for (const topic of mixedTopics) {
+                if (questions.length < count) {
+                    const topicQuestions = await this.generateQuestions(
+                        topic,
+                        difficulty,
+                        Math.ceil(mixedQuestions / mixedTopics.length)
+                    );
+                    questions.push(...topicQuestions);
+                }
+            }
+            
+            return questions.slice(0, count);
+        } catch (error) {
+            console.error('Error generating adaptive questions:', error);
+            return await this.generateQuestions(subject, difficulty, count);
+        }
+    }
+
+    identifyWeakAreas(userPerformance) {
+        return Object.entries(userPerformance)
+            .filter(([_, score]) => score < 70)
+            .sort(([_, a], [__, b]) => a - b)
+            .map(([topic, _]) => topic)
+            .slice(0, 3);
+    }
+
+    identifyStrongAreas(userPerformance) {
+        return Object.entries(userPerformance)
+            .filter(([_, score]) => score >= 80)
+            .sort(([_, a], [__, b]) => b - a)
+            .map(([topic, _]) => topic)
+            .slice(0, 2);
+    }
+
+    adjustDifficulty(baseDifficulty, performanceScore) {
+        if (performanceScore < 50) return 'easy';
+        if (performanceScore < 70) return 'medium';
+        return 'hard';
     }
 }
 
