@@ -138,6 +138,16 @@ const SyllabusTest = () => {
 
     try {
       await addAssessmentResult(testData);
+      
+      // Navigate to detailed results page
+      navigate('/test-results', {
+        state: {
+          testData,
+          questions,
+          userAnswers: answers,
+          score: results.score
+        }
+      });
     } catch (error) {
       console.error('Error saving test results:', error);
     }

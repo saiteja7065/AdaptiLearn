@@ -211,7 +211,10 @@ const Dashboard = () => {
 
   // Check if profile is incomplete - handles both nested objects and simple IDs
   const isProfileIncomplete = () => {
-    if (!userProfile) return true;
+    if (!userProfile || loading) return false; // Don't show alert while loading
+    
+    // Check if profile setup is completed
+    if (userProfile.setupCompleted === true) return false;
     
     // Check branch - can be userProfile.branch (ID) or userProfile.branch.name (object)
     const hasBranch = userProfile.branch && 
@@ -578,7 +581,7 @@ const Dashboard = () => {
 
       <Container maxWidth="xl" className="py-8">
         {/* Profile Completion Alert - Only show if user profile is truly incomplete */}
-        {(!loading && user && isProfileIncomplete()) && (
+        {(!loading && user && userProfile && isProfileIncomplete()) && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -586,7 +589,7 @@ const Dashboard = () => {
             className="mb-6"
           >
             <Alert 
-              severity="info" 
+              severity="warning" 
               action={
                 <Button 
                   color="inherit" 
@@ -599,8 +602,8 @@ const Dashboard = () => {
               }
               sx={{ 
                 borderRadius: 3,
-                background: 'linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)',
-                border: '1px solid #2196F3'
+                background: 'linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%)',
+                border: '1px solid #FF9800'
               }}
             >
               Complete your profile to get personalized learning recommendations and access all features!

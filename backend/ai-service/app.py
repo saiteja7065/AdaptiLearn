@@ -5,7 +5,10 @@ from pydantic import BaseModel, Field
 from services.question_generator import QuestionGenerator
 import os
 from dotenv import load_dotenv
-import google.generativeai as genai
+try:
+    import google.generativeai as genai  # type: ignore
+except ImportError:
+    genai = None
 from typing import Dict, Any, List, Optional
 import logging
 from datetime import datetime
@@ -63,31 +66,45 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",  # React development server
         "http://localhost:3001",  # Alternative port
+        "http://localhost:3002",  # Current React app port
         "https://localhost:3000",
-        "https://your-firebase-app.web.app",  # Production frontend URL
-        "https://your-custom-domain.com"
+        "https://localhost:3001", 
+        "https://localhost:3002",
+        "https://adaptilearn-312da.firebaseapp.com",  # Production frontend URL
+        "https://adaptilearn-312da.web.app"  # Firebase hosting URL
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Security
-security = HTTPBearer()
-
 # Initialize Gemini AI service
 gemini_api_key = os.getenv("GEMINI_API_KEY")
+gemini_model = None
 
-if gemini_api_key:
-    genai.configure(api_key=gemini_api_key)
-    gemini_model = genai.GenerativeModel('gemini-pro')
-    logger.info("Gemini AI service initialized successfully")
-else:
+if gemini_api_key and genai:
+    try:
+        # Configure the API key
+        genai.configure(api_key=gemini_api_key)
+        # Use the correct method to initialize the model
+        gemini_model = genai.GenerativeModel('gemini-pro')
+        logger.info("Gemini AI service initialized successfully")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Gemini model: {str(e)}")
+        # Fallback to None if initialization fails
+        gemini_model = None
+elif not gemini_api_key:
     logger.warning("GEMINI_API_KEY not found. AI features will be limited.")
+    gemini_model = None
+else:
+    logger.warning("Google Generative AI library not available. AI features will be limited.")
     gemini_model = None
 
 # Initialize services (Gemini only)
 question_generator = QuestionGenerator(gemini_model=gemini_model)
+
+# Initialize security
+security = HTTPBearer()
 
 # Dependency for Firebase Auth verification
 async def verify_firebase_token(credentials: HTTPAuthorizationCredentials = Security(security)) -> Dict[str, str]:
@@ -199,10 +216,10 @@ async def analyze_content(
         words = request.content.lower().split()
         stop_words = {"the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by", "is", "are", "was", "were"}
         keywords = [word for word in words if len(word) > 3 and word not in stop_words]
-        keyword_counts = {}
+        keyword_counts: Dict[str, int] = {}
         for word in keywords:
             keyword_counts[word] = keyword_counts.get(word, 0) + 1
-        top_keywords = sorted(keyword_counts.keys(), key=lambda x: keyword_counts[x], reverse=True)[:8]
+        top_keywords = sorted(list(keyword_counts.keys()), key=lambda x: keyword_counts[x], reverse=True)[:8]
         
         # Determine difficulty based on content complexity
         if content_words < 300:
@@ -548,7 +565,6 @@ async def save_test_results(
     """Save test results and update user analytics"""
     try:
         user_id = request.get("userId")
-        test_data = request.get("testData", {})
         performance = request.get("performance", {})
         
         logger.info(f"Saving test results for user {user_id}")

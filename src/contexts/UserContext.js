@@ -120,13 +120,14 @@ export const UserProvider = ({ children }) => {
 
       const profile = {
         ...profileData,
+        setupCompleted: true, // Explicitly set setup as complete
         userId: user.uid,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       
       // Save to Firebase
-      await createUserDocumentFromAuth(user, profile);
+      await updateUserDocument(user.uid, profile);
       
       // Save subject preferences for analytics using real-time service
       if (profileData.selectedSubjects && profileData.selectedSubjects.length > 0) {
@@ -198,8 +199,9 @@ export const UserProvider = ({ children }) => {
       // Save to Firebase
       await saveUserAssessment(user.uid, assessmentResult);
       
-      const updatedResults = [...assessmentResults, assessmentResult];
-      setAssessmentResults(updatedResults);
+      console.log('Saving assessment result to Firebase:', assessmentResult);
+      setAssessmentResults(prevResults => [...prevResults, assessmentResult]);
+      console.log('Assessment results updated in context.');
       
       return { success: true, result: assessmentResult };
     } catch (error) {
@@ -222,10 +224,13 @@ export const UserProvider = ({ children }) => {
       };
       
       // Save to Firebase
+      console.log('Saving mock test result to Firebase:', mockTestResult);
       await firebaseSaveMockTest(user.uid, mockTestResult);
       
-      const updatedResults = [...mockTestResults, mockTestResult];
-      setMockTestResults(updatedResults);
+      // Correctly update state to trigger re-renders
+      setMockTestResults(prevResults => [...prevResults, mockTestResult]);
+      
+      console.log('Mock test results updated in context:', [...mockTestResults, mockTestResult]);
       
       return { success: true, result: mockTestResult };
     } catch (error) {

@@ -35,6 +35,7 @@ import {
   getUserSyllabi, 
   generateQuestionsFromSyllabus 
 } from '../firebase/syllabusManager';
+import TestResultDisplay from './TestResultDisplay';
 
 const Assessment = () => {
   const navigate = useNavigate();
@@ -63,10 +64,45 @@ const Assessment = () => {
       if (user) {
         try {
           const syllabi = await getUserSyllabi(user.uid);
-          setAvailableSyllabi(syllabi);
+          
+          // If no syllabi found, add some default ones
+          if (syllabi.length === 0) {
+            const defaultSyllabi = [
+              {
+                id: 'default_cs',
+                subject: 'Computer Science Fundamentals',
+                title: 'CS Core Concepts',
+                description: 'Basic computer science concepts and programming',
+                topics: ['Data Structures', 'Algorithms', 'Programming Basics'],
+                difficulty: 'medium'
+              },
+              {
+                id: 'default_web',
+                subject: 'Web Technologies',
+                title: 'Full Stack Development',
+                description: 'Modern web development technologies',
+                topics: ['HTML/CSS', 'JavaScript', 'React', 'Node.js'],
+                difficulty: 'medium'
+              }
+            ];
+            setAvailableSyllabi(defaultSyllabi);
+          } else {
+            setAvailableSyllabi(syllabi);
+          }
         } catch (error) {
           console.error('Error loading syllabi:', error);
           setError('Failed to load syllabi');
+          // Provide fallback syllabi even on error
+          setAvailableSyllabi([
+            {
+              id: 'fallback_cs',
+              subject: 'Computer Science',
+              title: 'General CS Topics',
+              description: 'General computer science assessment',
+              topics: ['Programming', 'Data Structures', 'Algorithms'],
+              difficulty: 'medium'
+            }
+          ]);
         }
       }
     };
@@ -80,28 +116,41 @@ const Assessment = () => {
       if (assessmentMode === 'syllabus' && selectedSyllabus) {
         setLoading(true);
         try {
-          // Use new API service for question generation with branch context
+          // Use syllabus manager for question generation with fallback
           const branchCode = userProfile?.branch?.code || userProfile?.branch || 'CSE';
           const semesterValue = userProfile?.semester?.value || userProfile?.semester || 1;
           
-          const questions = await apiService.generateQuestions(
-            selectedSyllabus.subject || 'Computer Science',
-            'medium',
-            10,
-            branchCode,
-            semesterValue
-          );
+          let questions = [];
+          
+          try {
+            // Try API service first
+            questions = await apiService.generateQuestions(
+              selectedSyllabus.subject || 'Computer Science',
+              'medium',
+              10,
+              branchCode,
+              semesterValue
+            );
+          } catch (apiError) {
+            console.warn('API service unavailable, using syllabus manager fallback:', apiError);
+            // Fallback to syllabus manager
+            questions = await generateQuestionsFromSyllabus(selectedSyllabus, 'medium', 10);
+          }
           
           if (questions && questions.length > 0) {
             setQuestions(questions);
             setError('');
             
-            // Track activity
-            await apiService.trackActivity('assessment_started', {
-              mode: 'syllabus',
-              subject: selectedSyllabus.subject,
-              questionCount: questions.length
-            });
+            // Track activity with fallback
+            try {
+              await apiService.trackActivity('assessment_started', {
+                mode: 'syllabus',
+                subject: selectedSyllabus.subject,
+                questionCount: questions.length
+              });
+            } catch (trackError) {
+              console.warn('Activity tracking failed:', trackError);
+            }
           } else {
             setError('Failed to generate questions from syllabus');
             setQuestions(getDefaultQuestions()); // Fallback
@@ -121,22 +170,35 @@ const Assessment = () => {
           const semesterValue = userProfile?.semester?.value || userProfile?.semester || 1;
           const mainSubject = userProfile?.selectedSubjects?.[0] || 'Computer Science Fundamentals';
           
-          const questions = await apiService.generateQuestions(
-            mainSubject,
-            'medium',
-            10,
-            branchCode,
-            semesterValue
-          );
+          let questions = [];
+          
+          try {
+            // Try API service first
+            questions = await apiService.generateQuestions(
+              mainSubject,
+              'medium',
+              10,
+              branchCode,
+              semesterValue
+            );
+          } catch (apiError) {
+            console.warn('API service unavailable, using default questions:', apiError);
+            // Fallback to default questions
+            questions = getDefaultQuestions();
+          }
           
           if (questions && questions.length > 0) {
             setQuestions(questions);
             
-            // Track activity
-            await apiService.trackActivity('assessment_started', {
-              mode: 'adaptive',
-              questionCount: questions.length
-            });
+            // Track activity with fallback
+            try {
+              await apiService.trackActivity('assessment_started', {
+                mode: 'adaptive',
+                questionCount: questions.length
+              });
+            } catch (trackError) {
+              console.warn('Activity tracking failed:', trackError);
+            }
           } else {
             setQuestions(getDefaultQuestions());
           }
@@ -279,7 +341,11 @@ const Assessment = () => {
       // Submit to backend analytics service
       try {
         const backendResponse = await apiService.submitAssessment(assessmentData);
-        console.log('Assessment submitted to backend:', backendResponse);
+        if (backendResponse.fallback) {
+          console.warn('Assessment saved locally (backend unavailable):', backendResponse);
+        } else {
+          console.log('Assessment submitted to backend:', backendResponse);
+        }
       } catch (backendError) {
         console.error('Failed to submit to backend:', backendError);
         // Continue with local storage even if backend fails
@@ -299,13 +365,17 @@ const Assessment = () => {
         }))
       });
 
-      // Track completion activity
-      await apiService.trackActivity('assessment_completed', {
-        score: assessmentResults.percentage,
-        timeSpent: 1800 - timeLeft,
-        mode: assessmentMode,
-        totalQuestions: questions.length
-      });
+      // Track completion activity with fallback
+      try {
+        await apiService.trackActivity('assessment_completed', {
+          score: assessmentResults.percentage,
+          timeSpent: 1800 - timeLeft,
+          mode: assessmentMode,
+          totalQuestions: questions.length
+        });
+      } catch (trackError) {
+        console.warn('Activity tracking failed:', trackError);
+      }
 
     } catch (error) {
       console.error('Error submitting assessment:', error);
@@ -371,93 +441,24 @@ const Assessment = () => {
   // Results screen
   if (showResults && results) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-secondary-50 via-neutral-50 to-primary-50 py-8">
-        <Container maxWidth="md">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-          >
-            <Card className="card-elevated">
-              <CardContent className="p-8 text-center">
-                <CheckCircle className="text-6xl text-green-500 mb-4" />
-                <Typography variant="h3" className="font-bold mb-2">
-                  Assessment Completed!
-                </Typography>
-                <Typography variant="h5" className="text-neutral-600 mb-8">
-                  Your baseline score: {results.overallScore}%
-                </Typography>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                  <div className="text-center">
-                    <Typography variant="h6" className="font-semibold text-primary-600">
-                      Correct Answers
-                    </Typography>
-                    <Typography variant="h4" className="font-bold">
-                      {results.correctAnswers}/{results.totalQuestions}
-                    </Typography>
-                  </div>
-                  <div className="text-center">
-                    <Typography variant="h6" className="font-semibold text-secondary-600">
-                      Time Spent
-                    </Typography>
-                    <Typography variant="h4" className="font-bold">
-                      {Math.floor(results.timeSpent / 60)}m {results.timeSpent % 60}s
-                    </Typography>
-                  </div>
-                  <div className="text-center">
-                    <Typography variant="h6" className="font-semibold text-accent-600">
-                      Performance
-                    </Typography>
-                    <Typography variant="h4" className="font-bold">
-                      {results.overallScore >= 80 ? 'Excellent' : 
-                       results.overallScore >= 60 ? 'Good' : 'Needs Improvement'}
-                    </Typography>
-                  </div>
-                </div>
-
-                <div className="text-left mb-6">
-                  <Typography variant="h6" className="font-semibold mb-4">
-                    Subject Performance
-                  </Typography>
-                  {Object.entries(results.subjectScores).map(([subject, score]) => (
-                    <div key={subject} className="mb-2">
-                      <div className="flex justify-between items-center">
-                        <Typography variant="body1">{subject}</Typography>
-                        <Typography variant="body1" className="font-semibold">
-                          {score}%
-                        </Typography>
-                      </div>
-                      <LinearProgress
-                        variant="determinate"
-                        value={score}
-                        className="mt-1"
-                        sx={{
-                          '& .MuiLinearProgress-bar': {
-                            background: score >= 80 ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' :
-                                      score >= 60 ? 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)' :
-                                      'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
-                          }
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <Button
-                  variant="contained"
-                  onClick={() => navigate('/dashboard')}
-                  sx={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  }}
-                >
-                  Continue to Dashboard
-                </Button>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </Container>
-      </div>
+      <TestResultDisplay
+        score={results.overallScore}
+        totalQuestions={results.totalQuestions}
+        correctAnswers={results.correctAnswers}
+        timeTaken={results.timeSpent}
+        subjectScores={results.subjectScores}
+        questions={questions}
+        userAnswers={answers}
+        onRetakeTest={() => {
+          setShowResults(false);
+          setIsCompleted(false);
+          setCurrentQuestion(0);
+          setAnswers({});
+          setTimeLeft(1800);
+        }}
+        onBackToDashboard={() => navigate('/dashboard')}
+        testType="Assessment"
+      />
     );
   }
 

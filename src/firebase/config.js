@@ -4,7 +4,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPasswor
 import { getFirestore, doc, getDoc, setDoc, collection, addDoc, query, where, orderBy, onSnapshot, getDocs, serverTimestamp, disableNetwork, enableNetwork } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
-// Firebase configuration
+// Firebase configuration - with real credentials
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
@@ -15,6 +15,9 @@ const firebaseConfig = {
   measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
 
+// Development mode check - now only for logging
+const isDevelopment = process.env.NODE_ENV === 'development';
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
@@ -23,8 +26,19 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
+// Configure emulators for development
+if (isDevelopment) {
+  console.log('🔧 Running in development mode - using demo configuration');
+  
+  // Note: In a real setup, you would configure Firebase emulators here
+  // For now, we'll use the fallback services and mock data
+}
+
 // Export Firestore utilities for connection manager
 export { disableNetwork, enableNetwork };
+
+// Export development mode flag
+export { isDevelopment };
 
 // Enhanced Firestore connection management with error protection
 let firestoreInitialized = false;
@@ -39,8 +53,8 @@ const initializeFirestoreConnection = async () => {
   try {
     console.log(`🔧 Initializing Firestore connection (attempt ${connectionAttempts}/${maxConnectionAttempts})...`);
     
-    // Test basic connectivity first
-    const testDoc = doc(db, 'test', 'connection');
+    // Test basic connectivity with real Firebase
+    const testDoc = doc(db, 'system', 'connection-test');
     await getDoc(testDoc);
     
     firestoreInitialized = true;
@@ -50,8 +64,8 @@ const initializeFirestoreConnection = async () => {
     console.log(`⚠️ Firestore initialization attempt ${connectionAttempts} failed:`, error.message);
     
     if (connectionAttempts >= maxConnectionAttempts) {
-      console.log('🛡️ Max connection attempts reached, enabling offline mode');
-      firestoreInitialized = true; // Prevent further attempts
+      console.log('🛡️ Max connection attempts reached, enabling fallback mode');
+      firestoreInitialized = true; // Enable fallback mode
     } else {
       // Retry after delay
       setTimeout(() => {

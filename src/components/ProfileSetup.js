@@ -119,9 +119,9 @@ const ProfileSetup = () => {
       return;
     }
     
-    // If user already has a complete profile, redirect to dashboard
-    if (userProfile && userProfile.branch && userProfile.semester) {
-      console.log('✅ User already has a profile, redirecting to dashboard');
+    // If user already has a complete profile and not in edit mode, redirect to dashboard
+    if (!isEditMode && userProfile && userProfile.setupCompleted === true) {
+      console.log('✅ User already has a complete profile, redirecting to dashboard');
       navigate('/dashboard');
       return;
     }
@@ -219,6 +219,8 @@ const ProfileSetup = () => {
         semesterData: selectedSemester,
         subjects: selectedSubjects,
         setupCompleted: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         preferences: {
           difficultyLevel: 'medium',
           studyGoals: ['exam_preparation'],

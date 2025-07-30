@@ -24,6 +24,7 @@ import AITutor from './components/AITutor';
 import Settings from './components/Settings';
 import SyllabusManagement from './components/SyllabusManagement';
 import SyllabusTest from './components/SyllabusTest';
+import TestResults from './components/TestResults';
 import FirestoreErrorBoundary from './components/FirestoreErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import AuthenticatedRedirect from './components/AuthenticatedRedirect';
@@ -316,6 +317,14 @@ function App() {
                     element={
                       <ProtectedRoute>
                         <SyllabusTest />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/test-results" 
+                    element={
+                      <ProtectedRoute>
+                        <TestResults />
                       </ProtectedRoute>
                     } 
                   />

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Container,
@@ -33,6 +34,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
 
 const MockTest = () => {
+  const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { userProfile, saveMockTestResult } = useUser();
   
@@ -244,6 +246,17 @@ const MockTest = () => {
           // Use UserContext method to save (handles both Firestore and local state)
           await saveMockTestResult(testData);
           console.log('✅ Test results saved through UserContext');
+          
+          // Navigate to detailed results page
+          navigate('/test-results', {
+            state: {
+              testData,
+              questions,
+              userAnswers: answers,
+              score: results.percentage
+            }
+          });
+          return; // Exit early to prevent showing old results dialog
           
           // Also save to backend analytics API for dashboard updates
           try {
@@ -962,6 +975,8 @@ const MockTest = () => {
         insights={adaptiveInsights}
         onRetakeTest={handleResetTest}
         branch={selectedSyllabus?.branch || userProfile?.branch?.code || 'CSE'}
+        questions={questions}
+        userAnswers={answers}
       />      {firestoreError && (
         <Alert severity="info" sx={{ mt: 2 }}>
           🛡️ Firestore Shield activated - Connection temporarily restored. Your progress is safe.
